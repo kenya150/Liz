@@ -1,0 +1,65 @@
+<div class="min-h-screen bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center p-4">
+  <div class="bg-white rounded-lg shadow-2xl p-8 w-full max-w-md">
+    <h2 class="text-3xl font-bold text-center text-gray-800 mb-8">Iniciar Sesión</h2>
+    
+    <form [formGroup]="loginForm" class="space-y-5">
+      <!-- Email Input -->
+      <div>
+        <input 
+          formControlName="correo" 
+          type="email"
+          placeholder="Tu correo electrónico" 
+          class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 transition duration-200"
+          required />
+        @if (loginForm.get('correo')?.touched && getEmailError()) {
+          <div class="mt-2 text-red-600 text-sm font-semibold flex items-center">
+            <span class="mr-2">⚠️</span>
+            {{ getEmailError() }}
+          </div>
+        }
+      </div>
+
+      <!-- Password Input -->
+      <div>
+        <input 
+          formControlName="password" 
+          type="password" 
+          placeholder="Tu contraseña" 
+          class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 transition duration-200"
+          required />
+        @if (loginForm.get('password')?.touched && getPasswordError()) {
+          <div class="mt-2 text-red-600 text-sm font-semibold flex items-center">
+            <span class="mr-2">⚠️</span>
+            {{ getPasswordError() }}
+          </div>
+        }
+      </div>
+
+      <!-- Submit Button -->
+      <button 
+        type="button" 
+        (click)="onLoginClick()"
+        [disabled]="isLocked || loginForm.invalid || isSubmitting"
+        [class.opacity-50]="isLocked || loginForm.invalid || isSubmitting"
+        [class.cursor-not-allowed]="isLocked || loginForm.invalid || isSubmitting"
+        class="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-bold py-3 px-4 rounded-lg transition duration-200 mt-6">
+        {{ isSubmitting ? '⏳ Ingresando...' : 'Ingresar' }}
+      </button>
+    </form>
+
+    <!-- Registration Link -->
+    <div class="mt-6 text-center text-gray-700">
+      <p>¿No tienes cuenta? 
+        <a routerLink="/register" class="text-blue-600 font-semibold hover:text-blue-700 transition duration-200">
+          Crear cuenta
+        </a>
+      </p>
+    </div>
+    @if (isLocked) {
+      <div class="mt-6 p-4 bg-red-50 border-l-4 border-red-500 text-red-700 font-semibold rounded flex items-center justify-between">
+        <span>⏱️ Acceso bloqueado</span>
+        <span class="text-lg font-bold">{{ countdownText }}</span>
+      </div>
+    }
+  </div>
+</div>

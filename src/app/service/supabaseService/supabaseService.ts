@@ -1,0 +1,203 @@
+import { Injectable } from '@angular/core';
+import { createClient, SupabaseClient, AuthError } from '@supabase/supabase-js';
+
+@Injectable({
+  providedIn: 'root'
+})
+export class SupabaseService {
+  private client: SupabaseClient | null = null;
+  private readonly USERS_TABLE = 'usuarios';
+
+  constructor() {
+    const win = window as any;
+    if (win && win.SUPABASE_URL && win.SUPABASE_ANON_KEY) {
+      this.init(win.SUPABASE_URL, win.SUPABASE_ANON_KEY);
+    }
+  }
+
+  init(url: string, anonKey: string) {
+    if (!url || !anonKey) throw new Error('Supabase url y anonKey son requeridas');
+    this.client = createClient(url, anonKey, { auth: { persistSession: false } });
+  }
+
+  private ensureClient(): SupabaseClient {
+    if (!this.client) {
+      throw new Error('Cliente Supabase no inicializado. Call init(url, anonKey) o set window.SUPABASE_URL/ANON_KEY');
+    }
+    return this.client;
+  }
+
+  // Métodos de auth reconstruidos
+
+  async loginWithAuth(email: string, password: string): Promise<{ 
+    success: boolean; 
+    user?: any; 
+    session?: any;
+    error?: string;
+  }> {
+    try {
+      const client = this.ensureClient();
+      console.log('[SupabaseService] loginWithAuth iniciado', { email });
+      
+      const { data, error } = await client.auth.signInWithPassword({
+        email: email.trim(),
+        password: password.trim()
+      });
+
+      if (error) {
+        console.error('[SupabaseService] Error en signInWithPassword:', error);
+        return { 
+          success: false, 
+          error: this.mapAuthError(error)
+        };
+      }
+
+      if (data.user && data.session) {
+        console.log('[SupabaseService] ✓ Login exitoso con Auth');
+        return { 
+          success: true, 
+          user: data.user,
+          session: data.session
+        };
+      }
+
+      return { 
+        success: false, 
+        error: 'Error desconocido en autenticación'
+      };
+    } catch (e) {
+      console.error('[SupabaseService] Error en loginWithAuth', e);
+      return { 
+        success: false, 
+        error: `Error al conectar con servidor: ${String(e)}`
+      };
+    }
+  }
+
+  async signUpWithAuth(email: string, password: string): Promise<{
+    success: boolean;
+    user?: any;
+    error?: string;
+  }> {
+    try {
+      const client = this.ensureClient();
+      console.log('[SupabaseService] signUpWithAuth iniciado', { email });
+      
+      const { data, error } = await client.auth.signUp({
+        email: email.trim(),
+        password: password.trim()
+      });
+
+      if (error) {
+        console.error('[SupabaseService] Error en signUp:', error);
+        return {
+          success: false,
+          error: this.mapAuthError(error)
+        };
+      }
+
+      if (data.user) {
+        console.log('[SupabaseService] ✓ Registro exitoso');
+        return {
+          success: true,
+          user: data.user
+        };
+      }
+
+      return {
+        success: false,
+        error: 'Error desconocido en registro'
+      };
+    } catch (e) {
+      console.error('[SupabaseService] Error en signUpWithAuth', e);
+      return {
+        success: false,
+        error: `Error al conectar con servidor: ${String(e)}`
+      };
+    }
+  }
+
+  async logout(): Promise<{ success: boolean; error?: string }> {
+    try {
+      const client = this.ensureClient();
+      console.log('[SupabaseService] logout iniciado');
+      
+      const { error } = await client.auth.signOut();
+      
+      if (error) {
+        console.error('[SupabaseService] Error en signOut:', error);
+        return { success: false, error: error.message };
+      }
+
+      console.log('[SupabaseService] ✓ Logout exitoso');
+      return { success: true };
+    } catch (e) {
+      console.error('[SupabaseService] Error en logout', e);
+      return { success: false, error: String(e) };
+    }
+  }
+
+  private mapAuthError(error: AuthError): string {
+    const message = error.message.toLowerCase();
+    
+    if (message.includes('invalid login credentials')) {
+      return 'Correo o contraseña incorrectos';
+    }
+    if (message.includes('user not found')) {
+      return 'Usuario no encontrado';
+    }
+    if (message.includes('invalid email')) {
+      return 'Formato de correo inválido';
+    }
+    if (message.includes('password')) {
+      return 'Contraseña incorrecta';
+    }
+    if (message.includes('email already registered')) {
+      return 'Este correo ya está registrado';
+    }
+    if (message.includes('password should be at least')) {
+      return 'La contraseña debe tener al menos 6 caracteres';
+    }
+    if (message.includes('too many requests')) {
+      return 'Demasiados intentos. Intenta más tarde';
+    }
+    
+    return error.message || 'Error en la autenticación';
+  }
+
+  async createUserProfile(userId: string, email: string, nombre: string): Promise<{
+    success: boolean;
+    error?: string;
+  }> {
+    try {
+      const client = this.ensureClient();
+      console.log('[SupabaseService] createUserProfile iniciado', { userId, email, nombre });
+
+      const { error } = await client
+        .from('usuarios')
+        .insert({
+          id: userId,
+          email: email.trim(),
+          nombre: nombre.trim(),
+          created_at: new Date().toISOString()
+        });
+
+      if (error) {
+        console.error('[SupabaseService] Error en createUserProfile:', error);
+        return {
+          success: false,
+          error: error.message || 'Error al crear perfil'
+        };
+      }
+
+      console.log('[SupabaseService] ✓ Perfil de usuario creado');
+      return { success: true };
+    } catch (e) {
+      console.error('[SupabaseService] Error en createUserProfile', e);
+      return {
+        success: false,
+        error: `Error al guardar perfil: ${String(e)}`
+      };
+    }
+  }
+}
