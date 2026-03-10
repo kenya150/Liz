@@ -3,8 +3,8 @@ import { appConfig } from './app/app.config';
 import { AppComponent } from './app/app.component';
 
 // Frame busting - Capa adicional de seguridad para prevenir Clickjacking
-if (window.top !== window.self) {
-  window.top.location = window.self.location;
+if (window.top && window.top !== window.self) {
+  window.top.location.href = window.self.location.href;
 }
 
 bootstrapApplication(AppComponent, appConfig)
