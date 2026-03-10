@@ -1,6 +1,6 @@
-// auth.service.ts
 import { Injectable } from '@angular/core';
 import { SupabaseService } from '../supabaseService/supabaseService';
+import { SecurityLoggerService, LogLevel } from '../securityLoggerService/securityLoggerService';
 
 export interface LoginResult {
   success: boolean;
@@ -11,7 +11,10 @@ export interface LoginResult {
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
-  constructor(private supabase: SupabaseService) {}
+  constructor(
+    private supabase: SupabaseService,
+    private securityLogger: SecurityLoggerService
+  ) {}
 
   // Método para registrar un nuevo usuario
   async signup(email: string, password: string, nombre: string): Promise<LoginResult> {
@@ -25,30 +28,30 @@ export class AuthService {
     const sanitizedEmail = (email || '').trim();
     const sanitizedPassword = (password || '').trim();
     const sanitizedNombre = (nombre || '').trim();
-    
+
     if (sanitizedNombre.length < 3 || sanitizedNombre.length > 100) {
       return { success: false, message: 'El nombre debe tener entre 3 y 100 caracteres' };
     }
-    
+
     if (sanitizedEmail.length < 3 || sanitizedEmail.length > 254) {
       return { success: false, message: 'Correo inválido' };
     }
-    
+
     if (sanitizedPassword.length < 6 || sanitizedPassword.length > 500) {
       return { success: false, message: 'La contraseña debe tener al menos 6 caracteres' };
     }
-    
+
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(sanitizedEmail)) {
       return { success: false, message: 'Formato de correo inválido' };
     }
 
     console.log('[AuthService] Iniciando signup en Supabase Auth', { email: sanitizedEmail });
-    
+
     try {
       // 1. Registrar en Supabase Auth
       const resp = await this.supabase.signUpWithAuth(sanitizedEmail, sanitizedPassword);
       console.log('[AuthService] Respuesta de signup:', { success: resp.success });
-      
+
       if (resp.success && resp.user) {
         // 2. Guardar perfil en tabla usuarios
         console.log('[AuthService] Guardando perfil de usuario en BD');
@@ -83,9 +86,9 @@ export class AuthService {
   // Persistimos intentos y bloqueos en localStorage para simular un backend
   private readonly ATTEMPTS_KEY = 'auth_failed_attempts_v1';
   private readonly AUDIT_KEY = 'auth_audit_log_v1';
-  private readonly MAX_ATTEMPTS = 3; // 3 intentos fallidos antes de bloquear
+  private readonly MAX_ATTEMPTS = 5; // 5 intentos fallidos antes de bloquear (Actualizado)
   private readonly RESET_LOCKEVEL_HOURS = 2; // resetear lockLevel después de 2 horas sin actividad maligna
-  
+
   // Validación contra inyecciones
   private readonly BLOCKED_PATTERNS = [
     /[<>"'`;\\]/,           // caracteres HTML/SQL
@@ -135,7 +138,7 @@ export class AuthService {
   // Intento de login; devuelve resultado detallado incluyendo información de bloqueo
   async login(email: string, password: string): Promise<LoginResult> {
     const now = Date.now();
-    
+
     console.log('[AuthService] Intento de login iniciado');
 
     if (!email || !password) {
@@ -145,20 +148,20 @@ export class AuthService {
     // Validaciones de seguridad contra inyecciones
     const sanitizedEmail = (email || '').trim();
     const sanitizedPassword = (password || '').trim();
-    
+
     // Validar longitud
     if (sanitizedEmail.length < 3 || sanitizedEmail.length > 254) {
       console.warn('[AuthService] Email con longitud inválida');
       this.pushAudit({ email: sanitizedEmail, success: false, message: 'Email inválido', time: new Date().toISOString() });
       return { success: false, message: 'Correo inválido' };
     }
-    
+
     if (sanitizedPassword.length < 1 || sanitizedPassword.length > 500) {
       console.warn('[AuthService] Password con longitud inválida');
       this.pushAudit({ email: sanitizedEmail, success: false, message: 'Contraseña inválida', time: new Date().toISOString() });
       return { success: false, message: 'Contraseña inválida' };
     }
-    
+
     // Validar contra patrones de inyección
     for (const pattern of this.BLOCKED_PATTERNS) {
       if (pattern.test(sanitizedEmail) || pattern.test(sanitizedPassword)) {
@@ -167,7 +170,7 @@ export class AuthService {
         return { success: false, message: 'Entrada inválida detectada' };
       }
     }
-    
+
     // Validar formato de email básico
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(sanitizedEmail)) {
       console.warn('[AuthService] Formato de email inválido');
@@ -195,7 +198,7 @@ export class AuthService {
     }
 
     console.log('[AuthService] Iniciando verificación de credenciales con Supabase Auth', { emailNormalized });
-    
+
     // Usar Supabase Auth para validar credenciales
     let credsMatch = false;
     let apiErrorMsg = '';
@@ -221,7 +224,10 @@ export class AuthService {
       // reiniciar contador de intentos y desbloquear al hacer login exitoso
       delete attemptsStore[emailNormalized];
       this.writeAttempts(attemptsStore);
-      console.log(`[${new Date().toISOString()}] Login exitoso: ${emailNormalized}`);
+
+      // LOG: Éxito (INFO)
+      this.securityLogger.log(LogLevel.INFO, 'Usuario autenticado correctamente', emailNormalized);
+
       this.pushAudit({ email: emailNormalized, success: true, message: 'Acceso concedido', time: new Date().toISOString() });
       return { success: true, message: 'Acceso concedido', attempts: 0 };
     }
@@ -229,13 +235,16 @@ export class AuthService {
     // En caso de fallo: incrementar contador y posiblemente aplicar bloqueo
     record.count = (record.count || 0) + 1;
 
-    // Al alcanzar MAX_ATTEMPTS (3), aplicar bloqueo escalonado
+    // LOG: Advertencia (WARN) - Fallo en credenciales
+    this.securityLogger.log(LogLevel.WARN, `Intento fallido #${record.count}`, emailNormalized);
+
+    // Al alcanzar MAX_ATTEMPTS (5), aplicar bloqueo escalonado
     if (record.count >= this.MAX_ATTEMPTS) {
       // Determinar el nivel de bloqueo basado en intentos previos bloqueados
       let lockLevel = record.lockLevel || 1;
       const lastBlockTime = record.lastBlockTime || 0;
       const hoursElapsed = (now - lastBlockTime) / (1000 * 60 * 60);
-      
+
       // Si pasaron más de RESET_LOCKLEVEL_HOURS desde el último bloqueo, resetear a nivel 1
       if (hoursElapsed > this.RESET_LOCKEVEL_HOURS) {
         lockLevel = 1;
@@ -243,12 +252,15 @@ export class AuthService {
         // Si ya fue bloqueado antes recientemente, incrementar el nivel
         lockLevel = (lockLevel || 1) + 1;
       }
-      
+
       const minutosBloqueo = lockLevel;
       record.lockUntil = now + minutosBloqueo * 60 * 1000;
       record.lockLevel = lockLevel;
       record.lastBlockTime = now;
-      
+
+      // LOG: Crítico (CRITICAL) - Bloqueo de cuenta
+      this.securityLogger.log(LogLevel.CRITICAL, `BLOQUEO DE CUENTA tras ${record.count} intentos fallidos. Nivel: ${lockLevel}`, emailNormalized);
+
       console.log(`[${new Date().toISOString()}] Bloqueo aplicado a ${emailNormalized} por ${minutosBloqueo} minuto(s) (nivel ${lockLevel})`);
     }
 
