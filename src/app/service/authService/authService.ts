@@ -17,20 +17,25 @@ export class AuthService {
   ) {}
 
   // Método para registrar un nuevo usuario
-  async signup(email: string, password: string, nombre: string): Promise<LoginResult> {
+  async signup(name: string, email: string, password: string, phone: string): Promise<LoginResult> {
     console.log('[AuthService] signup iniciado');
 
-    if (!email || !password || !nombre) {
-      return { success: false, message: 'Nombre, correo y contraseña son requeridos' };
+    if (!name || !email || !password || !phone) {
+      return { success: false, message: 'Nombre, correo, contraseña y teléfono son requeridos' };
     }
 
     // Validaciones de seguridad
+    const sanitizedName = (name || '').trim();
     const sanitizedEmail = (email || '').trim();
     const sanitizedPassword = (password || '').trim();
-    const sanitizedNombre = (nombre || '').trim();
+    const sanitizedPhone = (phone || '').trim();
 
-    if (sanitizedNombre.length < 3 || sanitizedNombre.length > 100) {
+    if (sanitizedName.length < 3 || sanitizedName.length > 100) {
       return { success: false, message: 'El nombre debe tener entre 3 y 100 caracteres' };
+    }
+
+    if (sanitizedPhone.length < 7 || sanitizedPhone.length > 10) {
+      return { success: false, message: 'El teléfono debe tener entre 7 y 10 dígitos' };
     }
 
     if (sanitizedEmail.length < 3 || sanitizedEmail.length > 254) {
@@ -49,32 +54,42 @@ export class AuthService {
 
     try {
       // 1. Registrar en Supabase Auth
-      const resp = await this.supabase.signUpWithAuth(sanitizedEmail, sanitizedPassword);
+      const resp = await this.supabase.signUpWithAuth(
+        sanitizedEmail,
+        sanitizedPassword
+      );
       console.log('[AuthService] Respuesta de signup:', { success: resp.success });
 
       if (resp.success && resp.user) {
-        // 2. Guardar perfil en tabla usuarios
-        console.log('[AuthService] Guardando perfil de usuario en BD');
-        const profileResp = await this.supabase.createUserProfile(
+        console.log('[AuthService] ✓ Signup exitoso');
+        // 2. Guardar perfil en tabla public.profiles
+        const profileResp = await this.supabase.createProfile(
           resp.user.id,
-          sanitizedEmail,
-          sanitizedNombre
+          sanitizedName,
+          sanitizedPhone
         );
 
-        if (profileResp.success) {
-          console.log('[AuthService] ✓ Signup y perfil exitoso');
-          this.pushAudit({ email: sanitizedEmail, success: true, message: 'Usuario registrado correctamente', time: new Date().toISOString() });
-          return { success: true, message: 'Cuenta creada correctamente' };
-        } else {
-          // Si Auth pasó pero la tabla falló, informar al usuario
-          console.log('[AuthService] ✗ Perfil fallido:', profileResp.error);
-          this.pushAudit({ email: sanitizedEmail, success: false, message: `Error al guardar perfil: ${profileResp.error}`, time: new Date().toISOString() });
-          return { success: false, message: `Error al guardar datos: ${profileResp.error}` };
+        if (!profileResp.success) {
+          console.error('[AuthService] ✗ Error al guardar perfil:', profileResp.error);
+          return { success: false, message: 'Cuenta creada pero error al guardar perfil' };
         }
+
+        this.pushAudit({
+          email: sanitizedEmail,
+          success: true,
+          message: 'Usuario registrado correctamente',
+          time: new Date().toISOString()
+        });
+        return { success: true, message: 'Cuenta creada correctamente' };
       } else {
         const errorMsg = resp.error || 'Error desconocido en registro';
         console.log('[AuthService] ✗ Signup fallido:', errorMsg);
-        this.pushAudit({ email: sanitizedEmail, success: false, message: `Signup fallido: ${errorMsg}`, time: new Date().toISOString() });
+        this.pushAudit({
+          email: sanitizedEmail,
+          success: false,
+          message: `Signup fallido: ${errorMsg}`,
+          time: new Date().toISOString()
+        });
         return { success: false, message: errorMsg };
       }
     } catch (e) {

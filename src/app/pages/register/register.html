@@ -1,17 +1,17 @@
 <div class="min-h-screen bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center p-4">
   <div class="bg-white rounded-lg shadow-2xl p-8 w-full max-w-md">
     <h2 class="text-3xl font-bold text-center text-gray-800 mb-8">Crear Cuenta</h2>
-    
+
     <form [formGroup]="registerForm" class="space-y-5">
       <!-- Name Input -->
       <div>
-        <input 
-          formControlName="nombre" 
+        <input
+          formControlName="name"
           type="text"
-          placeholder="Tu nombre completo" 
+          placeholder="Tu nombre completo"
           class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 transition duration-200"
           required />
-        @if (registerForm.get('nombre')?.touched && getNameError()) {
+        @if (registerForm.get('name')?.touched && getNameError()) {
           <div class="mt-2 text-red-600 text-sm font-semibold flex items-center">
             <span class="mr-2">⚠️</span>
             {{ getNameError() }}
@@ -21,10 +21,10 @@
 
       <!-- Email Input -->
       <div>
-        <input 
-          formControlName="correo" 
+        <input
+          formControlName="email"
           type="email"
-          placeholder="Tu correo electrónico" 
+          placeholder="Tu correo electrónico"
           class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 transition duration-200"
           required />
         @if (registerForm.get('correo')?.touched && getEmailError()) {
@@ -35,12 +35,28 @@
         }
       </div>
 
+      <!--Phone Input-->
+      <div>
+        <input
+          formControlName="phone"
+          type="text"
+          placeholder="Tu número de teléfono"
+          class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 transition duration-200"
+          required />
+        @if (registerForm.get('phone')?.touched && getPhoneError()) {
+          <div class="mt-2 text-red-600 text-sm font-semibold flex items-center">
+            <span class="mr-2">⚠️</span>
+            {{ getPhoneError() }}
+          </div>
+        }
+      </div>
+
       <!-- Password Input -->
       <div>
-        <input 
-          formControlName="password" 
-          type="password" 
-          placeholder="Tu contraseña (mín 6 caracteres)" 
+        <input
+          formControlName="password"
+          type="password"
+          placeholder="Tu contraseña (mín 6 caracteres)"
           class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 transition duration-200"
           required />
         @if (registerForm.get('password')?.touched && getPasswordError()) {
@@ -53,10 +69,10 @@
 
       <!-- Confirm Password Input -->
       <div>
-        <input 
-          formControlName="confirmPassword" 
-          type="password" 
-          placeholder="Confirma tu contraseña" 
+        <input
+          formControlName="confirmPassword"
+          type="password"
+          placeholder="Confirma tu contraseña"
           class="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 transition duration-200"
           required />
         @if (registerForm.get('confirmPassword')?.touched && getConfirmPasswordError()) {
@@ -68,8 +84,8 @@
       </div>
 
       <!-- Submit Button -->
-      <button 
-        type="button" 
+      <button
+        type="button"
         (click)="onRegisterClick()"
         [disabled]="registerForm.invalid || isSubmitting"
         [class.opacity-50]="registerForm.invalid || isSubmitting"
@@ -81,7 +97,7 @@
 
     <!-- Link to Login -->
     <div class="mt-6 text-center text-gray-700">
-      <p>¿Ya tienes cuenta? 
+      <p>¿Ya tienes cuenta?
         <a routerLink="/login" class="text-blue-600 font-semibold hover:text-blue-700 transition duration-200">
           Inicia sesión aquí
         </a>

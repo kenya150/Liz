@@ -1,9 +1,10 @@
 import { Component, OnDestroy, OnInit } from '@angular/core';
-import { FormBuilder, FormGroup, Validators, ReactiveFormsModule } from '@angular/forms';
+import { FormBuilder, FormGroup, Validators, ReactiveFormsModule, AbstractControl, ValidationErrors } from '@angular/forms';
 import { AuthService } from '../../service/authService/authService';
 import { NotificationService } from '../../service/notificationService/notificationService';
 import { CommonModule } from '@angular/common';
 import { Router, RouterLink } from '@angular/router';
+import { parsePhoneNumberFromString } from 'libphonenumber-js';
 
 @Component({
   selector: 'app-register',
@@ -23,11 +24,27 @@ export class RegisterComponent implements OnInit, OnDestroy {
     private router: Router
   ) {}
 
+  phoneValidator(control: AbstractControl): ValidationErrors | null {
+    if (!control.value) return null;
+
+    // Intentar parsear como número internacional
+    const phoneNumber = parsePhoneNumberFromString(control.value);
+
+    if (phoneNumber && phoneNumber.isValid()) {
+      return null; // válido internacional
+    }
+
+    // Validar como número local (7 a 10 dígitos)
+    const localPattern = /^[0-9]{7,10}$/;
+    return localPattern.test(control.value) ? null : { invalidPhone: true };
+  }
+
   ngOnInit() {
     this.registerForm = this.fb.group({
-      nombre: ['', [Validators.required, Validators.minLength(3)]],
-      correo: ['', [Validators.required, Validators.email]],
-      password: ['', [Validators.required, Validators.minLength(6)]],
+      name: ['', [Validators.required, Validators.minLength(3)]],
+      email: ['', [Validators.required, Validators.email]],
+      phone: ['', [Validators.required, this.phoneValidator.bind(this)]],
+      password: ['', [Validators.required, Validators.minLength(6), Validators.pattern(/^(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d]).{6,}$/)]],
       confirmPassword: ['', [Validators.required]]
     }, { validators: this.passwordMatchValidator });
   }
@@ -41,7 +58,7 @@ export class RegisterComponent implements OnInit, OnDestroy {
     const confirmPassword = group.get('confirmPassword');
 
     if (!password || !confirmPassword) return null;
-    
+
     return password.value === confirmPassword.value ? null : { passwordMismatch: true };
   }
 
@@ -67,6 +84,17 @@ export class RegisterComponent implements OnInit, OnDestroy {
     return '';
   }
 
+  getPhoneError(): string {
+    const control = this.registerForm.get('phone');
+    if (control?.hasError('required')) {
+      return 'El teléfono es requerido';
+    }
+    if (control?.hasError('invalidPhone')) {
+      return 'Ingresa un número de teléfono válido';
+    }
+    return '';
+  }
+
   getPasswordError(): string {
     const control = this.registerForm.get('password');
     if (control?.hasError('required')) {
@@ -74,6 +102,9 @@ export class RegisterComponent implements OnInit, OnDestroy {
     }
     if (control?.hasError('minlength')) {
       return 'La contraseña debe tener al menos 6 caracteres';
+    }
+    if (control?.hasError('pattern')) {
+      return 'La contraseña debe contener al menos una letra mayúscula, un número y un símbolo especial';
     }
     return '';
   }
@@ -96,10 +127,10 @@ export class RegisterComponent implements OnInit, OnDestroy {
     }
 
     this.isSubmitting = true;
-    const { nombre, correo, password } = this.registerForm.value;
-    
+    const {name, email, phone, password } = this.registerForm.value;
+
     console.log('[RegisterComponent] Enviando registro al authService');
-    const result = await this.authService.signup(correo, password, nombre);
+    const result = await this.authService.signup(name, email, password, phone);
     console.log('[RegisterComponent] Resultado del registro:', result);
     this.isSubmitting = false;
 
@@ -107,7 +138,7 @@ export class RegisterComponent implements OnInit, OnDestroy {
       console.log('[RegisterComponent] Registro exitoso');
       this.notificationService.success('✓ Cuenta registrada correctamente. Redirigiendo al login...');
       this.registerForm.reset();
-      
+
       // Redirigir al login en 2 segundos
       setTimeout(() => {
         this.router.navigate(['/login']);
