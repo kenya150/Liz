@@ -21,9 +21,10 @@ export class SecurityLoggerService {
    * Registra un evento de seguridad en el log persistente.
    * REGLA DE ORO: Nunca registrar contraseñas.
    */
-  log(level: LogLevel, message: string, email: string, ip: string = 'unknown'): void {
+  log(level: LogLevel, message: string, userIdentifier: string, ip: string = 'unknown'): void {
     const timestamp = new Date().toISOString();
-    const logEntry = `[${timestamp}] [${level}] [User: ${email}] [IP: ${ip}] - ${message}`;
+    const userAgent = window.navigator.userAgent;
+    const logEntry = `[${timestamp}] [${level}] [User: ${userIdentifier}] [IP: ${ip}] [UA: ${userAgent}] - ${message}`;
 
     // Guardar en localStorage (simulando archivo físico en el navegador)
     this.saveToPersistentStorage(logEntry);

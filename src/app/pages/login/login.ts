@@ -2,8 +2,7 @@ import { Component, OnDestroy, OnInit } from '@angular/core';
 import { FormBuilder, FormGroup, Validators, ReactiveFormsModule } from '@angular/forms';
 import { AuthService, LoginResult } from '../../service/authService/authService';
 import { NotificationService } from '../../service/notificationService/notificationService';
-
-import { RouterLink } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 
 @Component({
   selector: 'app-login',
@@ -24,7 +23,8 @@ export class LoginComponent implements OnInit, OnDestroy {
   constructor(
     private authService: AuthService,
     private fb: FormBuilder,
-    private notificationService: NotificationService
+    private notificationService: NotificationService,
+    private router: Router
   ) {}
 
   ngOnInit() {
@@ -126,21 +126,24 @@ export class LoginComponent implements OnInit, OnDestroy {
 
     this.isSubmitting = true;
     const { correo, password } = this.loginForm.value;
-    console.log('[LoginComponent] Enviando credenciales al authService');
-    const result: LoginResult = await this.authService.login(correo, password);
-    console.log('[LoginComponent] Resultado del login:', result);
+
+    const result = await this.authService.login(correo, password);
     this.isSubmitting = false;
 
     if (result.success) {
-      console.log('[LoginComponent] Login exitoso');
-      this.notificationService.success('✓ Acceso concedido correctamente');
-      this.loginForm.reset();
+      console.log('[LoginComponent] Login exitoso, intentando navegar a /profile');
+      this.notificationService.success('✓ Inicio de sesión exitoso');
+      const navSuccess = await this.router.navigate(['/profile']);
+      console.log('[LoginComponent] Resultado navegación a /profile:', navSuccess);
+      if (!navSuccess) {
+        console.warn('[LoginComponent] La navegación a /profile fue cancelada o falló');
+      }
       return;
     }
 
     // Manejo de fallo
     console.log('[LoginComponent] Login fallido:', { message: result.message, lockedUntil: result.lockedUntil });
-    
+
     // Mostrar notificación de error
     const errorMsg = result.message || '❌ Credenciales incorrectas';
     console.log('[LoginComponent] Enviando notificación de ERROR:', errorMsg);

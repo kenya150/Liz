@@ -16,7 +16,23 @@ export class SupabaseService {
 
   init(url: string, anonKey: string) {
     if (!url || !anonKey) throw new Error('Supabase url y anonKey son requeridas');
-    this.client = createClient(url, anonKey, { auth: { persistSession: false } });
+    this.client = createClient(url, anonKey, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+        // Implementación de lock personalizada para evitar NavigatorLockAcquireTimeoutError
+        // Esta versión ignora el sistema de bloqueos del navegador que suele fallar en entornos de desarrollo.
+        lock: async (name: string, acquireTimeout: number, callback: () => Promise<any>) => {
+          try {
+            return await callback();
+          } catch (e) {
+            console.warn(`[SupabaseService] Lock '${name}' falló pero continuamos:`, e);
+            throw e;
+          }
+        }
+      }
+    });
   }
 
   private ensureClient(): SupabaseClient {
@@ -50,7 +66,7 @@ export class SupabaseService {
         .from('profiles')
         .update({ name, phone })
         .eq('id', id);
-      
+
       if (error) {
         console.error('[SupabaseService] Error al actualizar perfil:', error);
         return { success: false, error: error.message };
@@ -190,6 +206,28 @@ export class SupabaseService {
     } catch (e) {
       console.error('[SupabaseService] Error en logout', e);
       return { success: false, error: String(e) };
+    }
+  }
+
+  public async getSession(): Promise<{ session: any; error?: string }> {
+    try {
+      const client = this.ensureClient();
+      const { data, error } = await client.auth.getSession();
+      if (error) return { session: null, error: error.message };
+      return { session: data.session };
+    } catch (e) {
+      return { session: null, error: String(e) };
+    }
+  }
+
+  public async getUser(): Promise<{ user: any; error?: string }> {
+    try {
+      const client = this.ensureClient();
+      const { data, error } = await client.auth.getUser();
+      if (error) return { user: null, error: error.message };
+      return { user: data.user };
+    } catch (e) {
+      return { user: null, error: String(e) };
     }
   }
 

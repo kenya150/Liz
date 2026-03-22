@@ -16,7 +16,6 @@ export const appConfig: ApplicationConfig = {
   providers: [
     provideZoneChangeDetection({ eventCoalescing: true }),
     provideRouter(routes),
-    SupabaseService,
     {
       provide: APP_INITIALIZER,
       useFactory: initSupabase,

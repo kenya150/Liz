@@ -92,6 +92,14 @@ export class AuthService {
           message: 'Usuario registrado correctamente con teléfono cifrado',
           time: new Date().toISOString()
         });
+
+        // Registrar en el log de seguridad para auditoría
+        this.securityLogger.log(LogLevel.INFO, 'Usuario registrado correctamente con teléfono cifrado', sanitizedEmail);
+
+        // Si el registro inició sesión automáticamente, cerramos la sesión para obligar al login manual
+        // según el requerimiento del usuario de ir a la página de login.
+        await this.supabase.logout();
+
         return { success: true, message: 'Cuenta creada correctamente' };
       } else {
         const errorMsg = resp.error || 'Error desconocido en registro';
@@ -141,7 +149,7 @@ export class AuthService {
 
       // 2. Actualizar en Supabase
       const resp = await this.supabase.updateProfile(id, sanitizedName, encryptedPhone);
-      
+
       if (resp.success) {
         console.log('[AuthService] ✓ Perfil actualizado con teléfono cifrado');
         this.securityLogger.log(LogLevel.INFO, 'Perfil actualizado correctamente con teléfono cifrado', id);
@@ -159,7 +167,7 @@ export class AuthService {
   async getProfile(id: string): Promise<{ success: boolean; data?: any; message?: string }> {
     try {
       const resp = await this.supabase.getProfile(id);
-      
+
       if (resp.success && resp.data) {
         const profile = resp.data;
         if (profile.phone) {
@@ -326,6 +334,10 @@ export class AuthService {
       this.securityLogger.log(LogLevel.INFO, 'Usuario autenticado correctamente', emailNormalized);
 
       this.pushAudit({ email: emailNormalized, success: true, message: 'Acceso concedido', time: new Date().toISOString() });
+
+      // Asegurarnos de que el cliente de Supabase tenga la sesión antes de volver
+      await this.supabase.getSession();
+
       return { success: true, message: 'Acceso concedido', attempts: 0 };
     }
 
@@ -380,5 +392,41 @@ export class AuthService {
     console.log(`[${new Date().toISOString()}] Login fallido: ${emailNormalized}, intentos: ${record.count} - ${apiErrorMsg}`);
     this.pushAudit({ email: emailNormalized, success: false, message: userMsg, time: new Date().toISOString() });
     return { success: false, message: userMsg, attempts: record.count, lockedUntil: record.lockUntil };
+  }
+
+  async logout(): Promise<boolean> {
+    try {
+      // Intentar obtener el usuario antes de cerrar sesión para el log
+      const { user } = await this.supabase.getUser();
+      const email = user?.email || 'unknown';
+
+      const resp = await this.supabase.logout();
+      if (resp.success) {
+        this.securityLogger.log(LogLevel.INFO, 'Sesión cerrada correctamente', email);
+        return true;
+      }
+      return false;
+    } catch (e) {
+      console.error('[AuthService] Error en logout', e);
+      return false;
+    }
+  }
+
+  async isAuthenticated(): Promise<boolean> {
+    try {
+      const { session } = await this.supabase.getSession();
+      if (session) return true;
+
+      const { user } = await this.supabase.getUser();
+      return !!user;
+    } catch (e) {
+      console.warn('[AuthService] Error al verificar autenticación:', e);
+      return false;
+    }
+  }
+
+  async getCurrentUser(): Promise<any> {
+    const { user } = await this.supabase.getUser();
+    return user;
   }
 }
