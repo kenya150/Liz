@@ -134,6 +134,7 @@ export class RegisterComponent implements OnInit, OnDestroy {
     console.log('[RegisterComponent] Resultado del registro:', result);
     this.isSubmitting = false;
 
+
     if (result.success) {
       console.log('[RegisterComponent] Registro exitoso');
       this.notificationService.success('✓ Cuenta registrada correctamente. Redirigiendo al login...');

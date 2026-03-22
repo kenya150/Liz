@@ -2,7 +2,7 @@ import { Component, OnDestroy, OnInit } from '@angular/core';
 import { FormBuilder, FormGroup, Validators, ReactiveFormsModule } from '@angular/forms';
 import { AuthService, LoginResult } from '../../service/authService/authService';
 import { NotificationService } from '../../service/notificationService/notificationService';
-import { CommonModule } from '@angular/common';
+
 import { RouterLink } from '@angular/router';
 
 @Component({
@@ -10,7 +10,7 @@ import { RouterLink } from '@angular/router';
   templateUrl: 'login.html',
   styleUrl: 'login.css',
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, RouterLink]
+  imports: [ReactiveFormsModule, RouterLink]
 })
 export class LoginComponent implements OnInit, OnDestroy {
   loginForm!: FormGroup;
