@@ -1,6 +1,7 @@
 import { Injectable } from '@angular/core';
 import { SupabaseService } from '../supabaseService/supabaseService';
 import { SecurityLoggerService, LogLevel } from '../securityLoggerService/securityLoggerService';
+import { EncryptionService } from '../encryptionService/encryptionService';
 
 export interface LoginResult {
   success: boolean;
@@ -13,7 +14,8 @@ export interface LoginResult {
 export class AuthService {
   constructor(
     private supabase: SupabaseService,
-    private securityLogger: SecurityLoggerService
+    private securityLogger: SecurityLoggerService,
+    private encryptionService: EncryptionService
   ) {}
 
   // Método para registrar un nuevo usuario
@@ -34,8 +36,8 @@ export class AuthService {
       return { success: false, message: 'El nombre debe tener entre 3 y 100 caracteres' };
     }
 
-    if (sanitizedPhone.length < 7 || sanitizedPhone.length > 10) {
-      return { success: false, message: 'El teléfono debe tener entre 7 y 10 dígitos' };
+    if (sanitizedPhone.length < 7 || sanitizedPhone.length > 15) {
+      return { success: false, message: 'El teléfono debe tener entre 7 y 15 dígitos' };
     }
 
     if (sanitizedEmail.length < 3 || sanitizedEmail.length > 254) {
@@ -53,6 +55,16 @@ export class AuthService {
     console.log('[AuthService] Iniciando signup en Supabase Auth', { email: sanitizedEmail });
 
     try {
+      // 0. Cifrar el teléfono antes de cualquier operación de guardado
+      let encryptedPhone: string;
+      try {
+        encryptedPhone = await this.encryptionService.encrypt(sanitizedPhone);
+        console.log('[AuthService] Teléfono cifrado correctamente');
+      } catch (encryptionError) {
+        console.error('[AuthService] Error al cifrar teléfono:', encryptionError);
+        return { success: false, message: 'Error de seguridad al procesar el teléfono' };
+      }
+
       // 1. Registrar en Supabase Auth
       const resp = await this.supabase.signUpWithAuth(
         sanitizedEmail,
@@ -62,11 +74,11 @@ export class AuthService {
 
       if (resp.success && resp.user) {
         console.log('[AuthService] ✓ Signup exitoso');
-        // 2. Guardar perfil en tabla public.profiles
+        // 2. Guardar perfil en tabla public.profiles con el teléfono cifrado
         const profileResp = await this.supabase.createProfile(
           resp.user.id,
           sanitizedName,
-          sanitizedPhone
+          encryptedPhone
         );
 
         if (!profileResp.success) {
@@ -77,7 +89,7 @@ export class AuthService {
         this.pushAudit({
           email: sanitizedEmail,
           success: true,
-          message: 'Usuario registrado correctamente',
+          message: 'Usuario registrado correctamente con teléfono cifrado',
           time: new Date().toISOString()
         });
         return { success: true, message: 'Cuenta creada correctamente' };
@@ -95,6 +107,76 @@ export class AuthService {
     } catch (e) {
       console.error('[AuthService] Error en signup', e);
       return { success: false, message: `Error al registrar: ${String(e)}` };
+    }
+  }
+
+  // Nuevo método para actualizar perfil con cifrado
+  async updateProfile(id: string, name: string, phone: string): Promise<LoginResult> {
+    console.log('[AuthService] updateProfile iniciado');
+
+    if (!id || !name || !phone) {
+      return { success: false, message: 'ID, nombre y teléfono son requeridos' };
+    }
+
+    const sanitizedName = (name || '').trim();
+    const sanitizedPhone = (phone || '').trim();
+
+    if (sanitizedName.length < 3 || sanitizedName.length > 100) {
+      return { success: false, message: 'El nombre debe tener entre 3 y 100 caracteres' };
+    }
+
+    if (sanitizedPhone.length < 7 || sanitizedPhone.length > 15) {
+      return { success: false, message: 'El teléfono debe tener entre 7 y 15 dígitos' };
+    }
+
+    try {
+      // 1. Cifrar el teléfono
+      let encryptedPhone: string;
+      try {
+        encryptedPhone = await this.encryptionService.encrypt(sanitizedPhone);
+      } catch (encryptionError) {
+        console.error('[AuthService] Error al cifrar teléfono durante actualización:', encryptionError);
+        return { success: false, message: 'Error de seguridad al procesar el teléfono' };
+      }
+
+      // 2. Actualizar en Supabase
+      const resp = await this.supabase.updateProfile(id, sanitizedName, encryptedPhone);
+      
+      if (resp.success) {
+        console.log('[AuthService] ✓ Perfil actualizado con teléfono cifrado');
+        this.securityLogger.log(LogLevel.INFO, 'Perfil actualizado correctamente con teléfono cifrado', id);
+        return { success: true, message: 'Perfil actualizado correctamente' };
+      } else {
+        return { success: false, message: resp.error || 'Error al actualizar perfil' };
+      }
+    } catch (e) {
+      console.error('[AuthService] Error en updateProfile', e);
+      return { success: false, message: `Error al actualizar: ${String(e)}` };
+    }
+  }
+
+  // Nuevo método para obtener perfil y descifrar el teléfono
+  async getProfile(id: string): Promise<{ success: boolean; data?: any; message?: string }> {
+    try {
+      const resp = await this.supabase.getProfile(id);
+      
+      if (resp.success && resp.data) {
+        const profile = resp.data;
+        if (profile.phone) {
+          try {
+            profile.phone = await this.encryptionService.decrypt(profile.phone);
+          } catch (decryptionError) {
+            console.warn('[AuthService] No se pudo descifrar el teléfono, es posible que esté en texto plano o use otra clave');
+            // Mantenemos el valor original si falla el descifrado
+          }
+        }
+        return { success: true, data: profile };
+      } else {
+        return { success: false, message: resp.error || 'Error al obtener perfil' };
+      }
+    } catch (e) {
+      console.error('[AuthService] Error en getProfile', e);
+      return { success: false, message: String(e) };
     }
   }
 

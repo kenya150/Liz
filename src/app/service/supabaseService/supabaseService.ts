@@ -42,6 +42,48 @@ export class SupabaseService {
     }
   }
 
+  // Nuevo método público para actualizar perfil
+  public async updateProfile(id: string, name: string, phone: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      const client = this.ensureClient();
+      const { error } = await client
+        .from('profiles')
+        .update({ name, phone })
+        .eq('id', id);
+      
+      if (error) {
+        console.error('[SupabaseService] Error al actualizar perfil:', error);
+        return { success: false, error: error.message };
+      }
+      console.log('[SupabaseService] ✓ Perfil actualizado en public.profiles');
+      return { success: true };
+    } catch (e) {
+      console.error('[SupabaseService] Error en updateProfile', e);
+      return { success: false, error: String(e) };
+    }
+  }
+
+  // Nuevo método para obtener el perfil y descifrar el teléfono si es necesario
+  public async getProfile(id: string): Promise<{ success: boolean; data?: any; error?: string }> {
+    try {
+      const client = this.ensureClient();
+      const { data, error } = await client
+        .from('profiles')
+        .select('*')
+        .eq('id', id)
+        .single();
+
+      if (error) {
+        console.error('[SupabaseService] Error al obtener perfil:', error);
+        return { success: false, error: error.message };
+      }
+      return { success: true, data };
+    } catch (e) {
+      console.error('[SupabaseService] Error en getProfile', e);
+      return { success: false, error: String(e) };
+    }
+  }
+
   // Métodos de auth reconstruidos
   async loginWithAuth(email: string, password: string): Promise<{
     success: boolean;
