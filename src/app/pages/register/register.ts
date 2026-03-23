@@ -122,33 +122,28 @@ export class RegisterComponent implements OnInit, OnDestroy {
 
   async onRegisterClick() {
     if (this.registerForm.invalid) {
-      this.notificationService.warning('Por favor completa los campos correctamente');
+      this.notificationService.warning('Por favor completa los campos correctamente.');
       return;
     }
 
     this.isSubmitting = true;
     const {name, email, phone, password } = this.registerForm.value;
 
-    console.log('[RegisterComponent] Enviando registro al authService');
     const result = await this.authService.signup(name, email, password, phone);
-    console.log('[RegisterComponent] Resultado del registro:', result);
     this.isSubmitting = false;
 
-
     if (result.success) {
-      console.log('[RegisterComponent] Registro exitoso');
-      this.notificationService.success('✓ Cuenta registrada correctamente. Redirigiendo al login...');
+      this.notificationService.success('Cuenta registrada correctamente. Redirigiendo al inicio de sesion...');
       this.registerForm.reset();
 
-      // Redirigir al login en 2 segundos
+      // Redirigir al login tras un breve periodo para que el usuario lea la notificacion
       setTimeout(() => {
         this.router.navigate(['/login']);
       }, 2000);
       return;
     }
 
-    // Manejo de fallo
-    console.log('[RegisterComponent] Registro fallido:', result.message);
-    this.notificationService.error(result.message || '❌ Error al registrar');
+    // Manejo de errores durante el registro
+    this.notificationService.error(result.message || 'Ocurrio un error al intentar registrar la cuenta.');
   }
 }

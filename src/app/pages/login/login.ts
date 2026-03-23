@@ -115,12 +115,12 @@ export class LoginComponent implements OnInit, OnDestroy {
 
   async onLoginClick() {
     if (this.isLocked) {
-      this.notificationService.warning(`⏱️ Acceso bloqueado. Tiempo restante: ${this.countdownText}`);
+      this.notificationService.warning(`Acceso bloqueado. Tiempo restante: ${this.countdownText}`);
       return;
     }
 
     if (this.loginForm.invalid) {
-      this.notificationService.warning('Por favor completa los campos correctamente');
+      this.notificationService.warning('Por favor completa los campos correctamente.');
       return;
     }
 
@@ -131,30 +131,23 @@ export class LoginComponent implements OnInit, OnDestroy {
     this.isSubmitting = false;
 
     if (result.success) {
-      console.log('[LoginComponent] Login exitoso, intentando navegar a /profile');
-      this.notificationService.success('✓ Inicio de sesión exitoso');
+      this.notificationService.success('Inicio de sesion exitoso.');
       const navSuccess = await this.router.navigate(['/profile']);
-      console.log('[LoginComponent] Resultado navegación a /profile:', navSuccess);
       if (!navSuccess) {
-        console.warn('[LoginComponent] La navegación a /profile fue cancelada o falló');
+        console.warn('[LoginComponent] La navegacion al perfil no pudo completarse.');
       }
       return;
     }
 
-    // Manejo de fallo
-    console.log('[LoginComponent] Login fallido:', { message: result.message, lockedUntil: result.lockedUntil });
-
-    // Mostrar notificación de error
-    const errorMsg = result.message || '❌ Credenciales incorrectas';
-    console.log('[LoginComponent] Enviando notificación de ERROR:', errorMsg);
+    // Manejo de errores de inicio de sesion
+    const errorMsg = result.message || 'Credenciales incorrectas.';
     this.notificationService.error(errorMsg);
 
-    // Si está bloqueado después del 3er intento
+    // Activacion de bloqueo temporal si el servicio lo indica
     if (result.lockedUntil && result.lockedUntil > Date.now()) {
-      console.log('[LoginComponent] Iniciando bloqueo de cuenta');
       this.saveLockToStorage(result.lockedUntil);
       this.startLockCountdown(result.lockedUntil);
-      this.notificationService.error('⛔ Demasiados intentos. Acceso bloqueado temporalmente.');
+      this.notificationService.error('Demasiados intentos fallidos. El acceso ha sido bloqueado temporalmente por seguridad.');
     }
   }
 }

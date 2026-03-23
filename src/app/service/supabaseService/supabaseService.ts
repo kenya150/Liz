@@ -5,6 +5,9 @@ import { createClient, SupabaseClient, AuthError } from '@supabase/supabase-js';
   providedIn: 'root'
 })
 export class SupabaseService {
+  /**
+   * Cliente de Supabase para interactuar con la base de datos y autenticacion.
+   */
   private client: SupabaseClient | null = null;
 
   constructor() {
@@ -14,51 +17,61 @@ export class SupabaseService {
     }
   }
 
+  /**
+   * Inicializa el cliente de Supabase con la URL y clave anonima proporcionadas.
+   * Configura la persistencia de sesion y un manejador de bloqueos personalizado para entornos web.
+   */
   init(url: string, anonKey: string) {
-    if (!url || !anonKey) throw new Error('Supabase url y anonKey son requeridas');
+    if (!url || !anonKey) throw new Error('La URL y la clave anonima de Supabase son obligatorias.');
+
     this.client = createClient(url, anonKey, {
       auth: {
         persistSession: true,
         autoRefreshToken: true,
         detectSessionInUrl: true,
-        // Implementación de lock personalizada para evitar NavigatorLockAcquireTimeoutError
-        // Esta versión ignora el sistema de bloqueos del navegador que suele fallar en entornos de desarrollo.
+        // Manejador de bloqueo personalizado para evitar errores de Navigator Lock en navegadores
         lock: async (name: string, acquireTimeout: number, callback: () => Promise<any>) => {
           try {
             return await callback();
-          } catch (e) {
-            console.warn(`[SupabaseService] Lock '${name}' falló pero continuamos:`, e);
-            throw e;
+          } catch (error) {
+            console.warn(`[SupabaseService] Error en operacion bloqueada '${name}':`, error);
+            throw error;
           }
         }
       }
     });
   }
 
+  /**
+   * Asegura que el cliente este inicializado antes de realizar operaciones.
+   */
   private ensureClient(): SupabaseClient {
     if (!this.client) {
-      throw new Error('Cliente Supabase no inicializado. Call init(url, anonKey) o set window.SUPABASE_URL/ANON_KEY');
+      throw new Error('El cliente de Supabase no ha sido inicializado correctamente.');
     }
     return this.client;
   }
-  // Nuevo método público para insertar perfil
+
+  /**
+   * Crea un nuevo registro de perfil en la base de datos.
+   */
   public async createProfile(id: string, name: string, phone: string): Promise<{ success: boolean; error?: string }> {
     try {
       const client = this.ensureClient();
       const { error } = await client.from('profiles').insert({ id, name, phone });
+
       if (error) {
-        console.error('[SupabaseService] Error al crear perfil:', error);
         return { success: false, error: error.message };
       }
-      console.log('[SupabaseService] ✓ Perfil creado en public.profiles');
       return { success: true };
-    } catch (e) {
-      console.error('[SupabaseService] Error en createProfile', e);
-      return { success: false, error: String(e) };
+    } catch (error) {
+      return { success: false, error: String(error) };
     }
   }
 
-  // Nuevo método público para actualizar perfil
+  /**
+   * Actualiza la informacion de un perfil existente.
+   */
   public async updateProfile(id: string, name: string, phone: string): Promise<{ success: boolean; error?: string }> {
     try {
       const client = this.ensureClient();
@@ -68,18 +81,17 @@ export class SupabaseService {
         .eq('id', id);
 
       if (error) {
-        console.error('[SupabaseService] Error al actualizar perfil:', error);
         return { success: false, error: error.message };
       }
-      console.log('[SupabaseService] ✓ Perfil actualizado en public.profiles');
       return { success: true };
-    } catch (e) {
-      console.error('[SupabaseService] Error en updateProfile', e);
-      return { success: false, error: String(e) };
+    } catch (error) {
+      return { success: false, error: String(error) };
     }
   }
 
-  // Nuevo método para obtener el perfil y descifrar el teléfono si es necesario
+  /**
+   * Recupera los datos de perfil asociados a un ID de usuario.
+   */
   public async getProfile(id: string): Promise<{ success: boolean; data?: any; error?: string }> {
     try {
       const client = this.ensureClient();
@@ -90,17 +102,17 @@ export class SupabaseService {
         .single();
 
       if (error) {
-        console.error('[SupabaseService] Error al obtener perfil:', error);
         return { success: false, error: error.message };
       }
       return { success: true, data };
-    } catch (e) {
-      console.error('[SupabaseService] Error en getProfile', e);
-      return { success: false, error: String(e) };
+    } catch (error) {
+      return { success: false, error: String(error) };
     }
   }
 
-  // Métodos de auth reconstruidos
+  /**
+   * Realiza el inicio de sesion mediante correo y contrasena.
+   */
   async loginWithAuth(email: string, password: string): Promise<{
     success: boolean;
     user?: any;
@@ -109,43 +121,28 @@ export class SupabaseService {
   }> {
     try {
       const client = this.ensureClient();
-      console.log('[SupabaseService] loginWithAuth iniciado', { email });
-
       const { data, error } = await client.auth.signInWithPassword({
         email: email.trim(),
         password: password.trim()
       });
 
       if (error) {
-        console.error('[SupabaseService] Error en signInWithPassword:', error);
-        return {
-          success: false,
-          error: this.mapAuthError(error)
-        };
+        return { success: false, error: this.mapAuthError(error) };
       }
 
       if (data.user && data.session) {
-        console.log('[SupabaseService] ✓ Login exitoso con Auth');
-        return {
-          success: true,
-          user: data.user,
-          session: data.session
-        };
+        return { success: true, user: data.user, session: data.session };
       }
 
-      return {
-        success: false,
-        error: 'Error desconocido en autenticación'
-      };
-    } catch (e) {
-      console.error('[SupabaseService] Error en loginWithAuth', e);
-      return {
-        success: false,
-        error: `Error al conectar con servidor: ${String(e)}`
-      };
+      return { success: false, error: 'No se pudo establecer la sesion de usuario.' };
+    } catch (error) {
+      return { success: false, error: 'Error de conexion con el servidor de autenticacion.' };
     }
   }
 
+  /**
+   * Registra una nueva cuenta de usuario en el sistema de autenticacion.
+   */
   async signUpWithAuth(email: string, password: string): Promise<{
     success: boolean;
     user?: any;
@@ -153,110 +150,95 @@ export class SupabaseService {
   }> {
     try {
       const client = this.ensureClient();
-      console.log('[SupabaseService] signUpWithAuth iniciado', { email, password });
-
       const { data, error } = await client.auth.signUp({
         email: email.trim(),
         password: password.trim(),
       });
 
       if (error) {
-        console.error('[SupabaseService] Error en signUp:', error);
-        return {
-          success: false,
-          error: this.mapAuthError(error)
-        };
+        return { success: false, error: this.mapAuthError(error) };
       }
 
       if (data.user) {
-        console.log('[SupabaseService] ✓ Registro exitoso');
-        return {
-          success: true,
-          user: data.user
-        };
+        return { success: true, user: data.user };
       }
 
-      return {
-        success: false,
-        error: 'Error desconocido en registro'
-      };
-    } catch (e) {
-      console.error('[SupabaseService] Error en signUpWithAuth', e);
-      return {
-        success: false,
-        error: `Error al conectar con servidor: ${String(e)}`
-      };
+      return { success: false, error: 'Error inesperado durante el registro de la cuenta.' };
+    } catch (error) {
+      return { success: false, error: 'Fallo al conectar con el servicio de registro.' };
     }
   }
 
+  /**
+   * Finaliza la sesion actual del usuario.
+   */
   async logout(): Promise<{ success: boolean; error?: string }> {
     try {
       const client = this.ensureClient();
-      console.log('[SupabaseService] logout iniciado');
-
       const { error } = await client.auth.signOut();
 
       if (error) {
-        console.error('[SupabaseService] Error en signOut:', error);
         return { success: false, error: error.message };
       }
-
-      console.log('[SupabaseService] ✓ Logout exitoso');
       return { success: true };
-    } catch (e) {
-      console.error('[SupabaseService] Error en logout', e);
-      return { success: false, error: String(e) };
+    } catch (error) {
+      return { success: false, error: String(error) };
     }
   }
 
+  /**
+   * Obtiene la sesion activa actual.
+   */
   public async getSession(): Promise<{ session: any; error?: string }> {
     try {
       const client = this.ensureClient();
       const { data, error } = await client.auth.getSession();
       if (error) return { session: null, error: error.message };
       return { session: data.session };
-    } catch (e) {
-      return { session: null, error: String(e) };
+    } catch (error) {
+      return { session: null, error: String(error) };
     }
   }
 
+  /**
+   * Obtiene la informacion del usuario autenticado.
+   */
   public async getUser(): Promise<{ user: any; error?: string }> {
     try {
       const client = this.ensureClient();
       const { data, error } = await client.auth.getUser();
       if (error) return { user: null, error: error.message };
       return { user: data.user };
-    } catch (e) {
-      return { user: null, error: String(e) };
+    } catch (error) {
+      return { user: null, error: String(error) };
     }
   }
 
+  /**
+   * Traduce los errores tecnicos de autenticacion a mensajes amigables para el usuario.
+   */
   private mapAuthError(error: AuthError): string {
     const message = error.message.toLowerCase();
 
     if (message.includes('invalid login credentials')) {
-      return 'Correo o contraseña incorrectos';
+      return 'El correo o la contrasena son incorrectos.';
     }
     if (message.includes('user not found')) {
-      return 'Usuario no encontrado';
+      return 'No se encontro ninguna cuenta con estos datos.';
     }
     if (message.includes('invalid email')) {
-      return 'Formato de correo inválido';
-    }
-    if (message.includes('password')) {
-      return 'Contraseña incorrecta';
+      return 'El formato del correo electronico no es valido.';
     }
     if (message.includes('email already registered')) {
-      return 'Este correo ya está registrado';
+      return 'Esta direccion de correo ya se encuentra registrada.';
     }
     if (message.includes('password should be at least')) {
-      return 'La contraseña debe tener al menos 6 caracteres';
+      return 'La contrasena debe tener una longitud minima de 6 caracteres.';
     }
     if (message.includes('too many requests')) {
-      return 'Demasiados intentos. Intenta más tarde';
+      return 'Se ha excedido el limite de intentos. Por favor, intente mas tarde.';
     }
 
-    return error.message || 'Error en la autenticación';
+    return 'Ocurrio un error durante la autenticacion. Por favor, verifique sus datos.';
   }
-
 }

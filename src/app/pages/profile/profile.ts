@@ -97,10 +97,10 @@ export class ProfileComponent implements OnInit, OnDestroy {
       if (resp.success) {
         this.profile = resp.data;
       } else {
-        this.notificationService.error('Error al procesar datos del perfil');
+        this.notificationService.error('Ocurrio un problema al recuperar la informacion del perfil.');
       }
-    } catch (e) {
-      this.notificationService.error('Error al procesar datos');
+    } catch (error) {
+      this.notificationService.error('No se pudieron procesar los datos en este momento.');
     } finally {
       this.loading = false;
     }
@@ -111,27 +111,39 @@ export class ProfileComponent implements OnInit, OnDestroy {
     this.removeInactivityListeners();
   }
 
-  togglePhone() {
+  /**
+   * Alterna la visibilidad del numero de telefono.
+   */
+  togglePhone(): void {
     this.showPhone = !this.showPhone;
   }
 
+  /**
+   * Aplica una mascara al numero de telefono para proteger la privacidad.
+   */
   maskPhone(phone: string): string {
     if (!phone) return '';
     return phone.substring(0, 3) + '****' + phone.substring(phone.length - 3);
   }
 
-  async onLogout() {
+  /**
+   * Finaliza la sesion del usuario y redirige al inicio de sesion.
+   */
+  async onLogout(): Promise<void> {
     const success = await this.authService.logout();
     if (success) {
-      this.notificationService.success('Sesión cerrada exitosamente');
+      this.notificationService.success('Sesion cerrada exitosamente.');
       this.router.navigate(['/login']);
     }
   }
 
-  private resetInactivityTimer() {
+  /**
+   * Reinicia el temporizador de inactividad.
+   */
+  private resetInactivityTimer(): void {
     this.clearInactivityTimer();
     this.inactivityTimeout = setTimeout(() => {
-      this.notificationService.warning('Sesión expirada por inactividad');
+      this.notificationService.warning('Su sesion ha expirado debido a la inactividad.');
       this.onLogout();
     }, this.INACTIVITY_LIMIT);
   }

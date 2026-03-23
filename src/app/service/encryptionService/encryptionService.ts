@@ -5,26 +5,41 @@ import { environment } from '../../../environments/environment';
   providedIn: 'root'
 })
 export class EncryptionService {
+  /**
+   * Algoritmo de cifrado simetrico AES-GCM
+   */
   private readonly algorithm = 'AES-GCM';
+
+  /**
+   * Longitud de la clave en bits (256 bits para AES-256)
+   */
   private readonly keyLength = 256;
+
+  /**
+   * Clave de cifrado en formato hexadecimal obtenida de la configuracion
+   */
   private readonly encryptionKeyHex = environment.phoneEncryptionKey || '';
 
   constructor() {
     if (!this.encryptionKeyHex) {
-      console.warn('[EncryptionService] PHONE_ENCRYPTION_KEY no encontrada en el entorno.');
+      console.warn('[EncryptionService] Clave de cifrado no encontrada en el entorno de configuracion.');
     }
   }
 
   /**
-   * Cifra un texto utilizando AES-256-GCM.
-   * Retorna una cadena en formato "iv:encryptedData" en base64.
+   * Cifra una cadena de texto utilizando el algoritmo AES-256-GCM.
+   * Genera un vector de inicializacion (IV) aleatorio para cada operacion.
+   *
+   * @param text Texto en plano que se desea cifrar.
+   * @returns Una promesa que resuelve en una cadena con el formato "ivBase64:datosCifradosBase64".
+   * @throws Error si el proceso de cifrado falla o la clave es invalida.
    */
   async encrypt(text: string): Promise<string> {
     try {
       if (!text) return '';
 
       const key = await this.importKey(this.encryptionKeyHex);
-      const iv = window.crypto.getRandomValues(new Uint8Array(12)); // 12 bytes es estándar para GCM
+      const iv = window.crypto.getRandomValues(new Uint8Array(12));
       const encodedText = new TextEncoder().encode(text);
 
       const encryptedContent = await window.crypto.subtle.encrypt(
@@ -41,23 +56,29 @@ export class EncryptionService {
 
       return `${ivBase64}:${encryptedBase64}`;
     } catch (error) {
-      console.error('[EncryptionService] Error al cifrar:', error);
-      throw new Error('Fallo en el proceso de cifrado');
+      console.error('[EncryptionService] Error durante el proceso de cifrado:', error);
+      throw new Error('No se pudo completar el cifrado de la informacion.');
     }
   }
 
   /**
-   * Descifra un texto en formato "iv:encryptedData".
+   * Descifra una cadena de texto previamente cifrada.
+   * El texto debe estar en el formato generado por la funcion encrypt.
+   *
+   * @param encryptedDataWithIv Cadena con el formato "ivBase64:datosCifradosBase64".
+   * @returns Una promesa que resuelve en el texto original descifrado.
+   * @throws Error si el formato es incorrecto o el descifrado falla.
    */
   async decrypt(encryptedDataWithIv: string): Promise<string> {
     try {
       if (!encryptedDataWithIv) return '';
 
-      const [ivBase64, encryptedBase64] = encryptedDataWithIv.split(':');
-      if (!ivBase64 || !encryptedBase64) {
-        throw new Error('Formato de datos cifrados inválido');
+      const parts = encryptedDataWithIv.split(':');
+      if (parts.length !== 2) {
+        throw new Error('El formato de los datos cifrados no es valido.');
       }
 
+      const [ivBase64, encryptedBase64] = parts;
       const key = await this.importKey(this.encryptionKeyHex);
       const iv = this.base64ToArrayBuffer(ivBase64);
       const encryptedContent = this.base64ToArrayBuffer(encryptedBase64);
@@ -73,11 +94,17 @@ export class EncryptionService {
 
       return new TextDecoder().decode(decryptedContent);
     } catch (error) {
-      console.error('[EncryptionService] Error al descifrar:', error);
-      throw new Error('Fallo en el proceso de descifrado. Es posible que la clave sea incorrecta o los datos estén corruptos.');
+      console.error('[EncryptionService] Error durante el proceso de descifrado:', error);
+      throw new Error('Fallo al descifrar los datos. Verifique la integridad de la informacion y la clave configurada.');
     }
   }
 
+  /**
+   * Importa una clave hexadecimal a un objeto CryptoKey utilizable por Web Crypto API.
+   *
+   * @param hexKey Clave en formato hexadecimal.
+   * @returns Promesa que resuelve en un objeto CryptoKey.
+   */
   private async importKey(hexKey: string): Promise<CryptoKey> {
     const keyBuffer = this.hexToArrayBuffer(hexKey);
     return await window.crypto.subtle.importKey(
@@ -89,6 +116,9 @@ export class EncryptionService {
     );
   }
 
+  /**
+   * Convierte una cadena hexadecimal a un ArrayBuffer.
+   */
   private hexToArrayBuffer(hex: string): ArrayBuffer {
     const bytes = new Uint8Array(hex.length / 2);
     for (let i = 0; i < hex.length; i += 2) {
@@ -97,6 +127,9 @@ export class EncryptionService {
     return bytes.buffer;
   }
 
+  /**
+   * Convierte un ArrayBuffer o Uint8Array a una cadena codificada en Base64.
+   */
   private arrayBufferToBase64(buffer: ArrayBuffer | Uint8Array): string {
     const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
     let binary = '';
@@ -106,6 +139,9 @@ export class EncryptionService {
     return window.btoa(binary);
   }
 
+  /**
+   * Convierte una cadena codificada en Base64 a un ArrayBuffer.
+   */
   private base64ToArrayBuffer(base64: string): ArrayBuffer {
     const binary = window.atob(base64);
     const bytes = new Uint8Array(binary.length);
