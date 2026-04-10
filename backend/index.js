@@ -1,4 +1,6 @@
 require('dotenv').config();
+const https = require('https');
+const fs = require('fs');
 const express = require('express');
 const cors = require('cors');
 
@@ -21,6 +23,13 @@ app.get('/', (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 
-app.listen(PORT, () => {
-  console.log(`Servidor corriendo en http://localhost:${PORT}`);
+const path = require('path');
+
+const options = {
+  key: fs.readFileSync(path.join(__dirname, '../certs/localhost-key.pem')),
+  cert: fs.readFileSync(path.join(__dirname, '../certs/localhost.pem')),
+};
+
+https.createServer(options, app).listen(3000, () => {
+  console.log('Servidor HTTPS en https://localhost:3000');
 });

@@ -44,3 +44,11 @@ Thumbs.db
 
 # Environment
 .env
+*.env
+
+# Certificados locales (mkcert)
+*.pem
+*.key
+localhost*.pem
+localhost.pem
+localhost-key.pem
