@@ -1,4 +1,6 @@
 import { Injectable } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { environment } from '../../../environments/environment';
 
 export enum LogLevel {
   INFO = 'INFO',
@@ -10,26 +12,64 @@ export enum LogLevel {
   providedIn: 'root'
 })
 export class SecurityLoggerService {
+  /**
+   * Clave local para el log secundario en localStorage.
+   * Este log es solo para debug y exportación manual.
+   * El log de seguridad real vive en el servidor.
+   */
   private readonly LOG_KEY = 'security_audit_log';
+  private readonly apiUrl = `${environment.apiUrl}/logs/security`;
 
-  constructor() {
+  constructor(private http: HttpClient) {
     // Exponer el comando globalmente para auditoría manual fácil
     (window as any).downloadLogs = () => this.exportToPhysicalFile();
   }
 
   /**
-   * Registra un evento de seguridad en el log persistente.
+   * Registra un evento de seguridad.
+   *
+   * - INFO:     solo consola + localStorage local (debug).
+   * - WARN:     consola + localStorage + envío al backend.
+   * - CRITICAL: consola + localStorage + envío al backend.
+   *
+   * La IP real la obtiene el servidor desde req.ip — desde el navegador
+   * no es posible conocerla con certeza, por eso ya no se recibe como parámetro.
+   *
    * REGLA DE ORO: Nunca registrar contraseñas.
    */
-  log(level: LogLevel, message: string, userIdentifier: string, ip: string = 'unknown'): void {
+  log(level: LogLevel, message: string, userIdentifier: string): void {
     const timestamp = new Date().toISOString();
     const userAgent = window.navigator.userAgent;
-    const logEntry = `[${timestamp}] [${level}] [User: ${userIdentifier}] [IP: ${ip}] [UA: ${userAgent}] - ${message}`;
+    const logEntry = `[${timestamp}] [${level}] [User: ${userIdentifier}] [UA: ${userAgent}] - ${message}`;
 
-    // Guardar en localStorage (simulando archivo físico en el navegador)
-    this.saveToPersistentStorage(logEntry);
+    this.saveToLocalStorage(logEntry);
+    this.printToConsole(level, logEntry);
 
-    // También mostrar en consola para depuración
+    // WARN y CRITICAL se persisten en el servidor donde no pueden ser manipulados
+    if (level === LogLevel.WARN || level === LogLevel.CRITICAL) {
+      this.sendToBackend(level, message, userIdentifier, timestamp);
+    }
+  }
+
+  private sendToBackend(
+    level: LogLevel,
+    message: string,
+    userIdentifier: string,
+    timestamp: string
+  ): void {
+    // fire-and-forget: el log no debe interrumpir el flujo principal si falla
+    this.http.post(this.apiUrl, {
+      level,
+      message,
+      userIdentifier,
+      userAgent: window.navigator.userAgent,
+      timestamp,
+    }).subscribe({
+      error: (err) => console.error('[SecurityLoggerService] No se pudo enviar el log al servidor:', err)
+    });
+  }
+
+  private printToConsole(level: LogLevel, logEntry: string): void {
     switch (level) {
       case LogLevel.INFO:
         console.info(`%c${logEntry}`, 'color: #007bff');
@@ -43,20 +83,18 @@ export class SecurityLoggerService {
     }
   }
 
-  private saveToPersistentStorage(entry: string): void {
+  private saveToLocalStorage(entry: string): void {
     try {
-      const currentLogs = localStorage.getItem(this.LOG_KEY);
-      const logsArray = currentLogs ? JSON.parse(currentLogs) : [];
-      logsArray.push(entry);
+      const current = localStorage.getItem(this.LOG_KEY);
+      const logs = current ? JSON.parse(current) : [];
+      logs.push(entry);
 
-      // Mantener solo los últimos 500 registros
-      if (logsArray.length > 500) {
-        logsArray.shift();
-      }
+      // Mantener solo los últimos 500 registros locales
+      if (logs.length > 500) logs.shift();
 
-      localStorage.setItem(this.LOG_KEY, JSON.stringify(logsArray));
+      localStorage.setItem(this.LOG_KEY, JSON.stringify(logs));
     } catch (e) {
-      console.error('Error al escribir en security_audit.log:', e);
+      console.error('[SecurityLoggerService] Error al escribir en localStorage:', e);
     }
   }
 
@@ -70,7 +108,8 @@ export class SecurityLoggerService {
   }
 
   /**
-   * Genera y descarga el archivo security_audit.log físicamente.
+   * Descarga el log local como archivo security_audit.log.
+   * Útil para debug. El log completo y confiable está en el servidor.
    */
   exportToPhysicalFile(): void {
     const logs = this.getLogs().join('\n');

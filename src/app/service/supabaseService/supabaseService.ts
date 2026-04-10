@@ -52,137 +52,25 @@ export class SupabaseService {
     return this.client;
   }
 
-  /**
-   * Crea un nuevo registro de perfil en la base de datos.
-   */
-  public async createProfile(id: string, name: string, phone: string): Promise<{ success: boolean; error?: string }> {
-    try {
-      const client = this.ensureClient();
-      const { error } = await client.from('profiles').insert({ id, name, phone });
-
-      if (error) {
-        return { success: false, error: error.message };
-      }
-      return { success: true };
-    } catch (error) {
-      return { success: false, error: String(error) };
-    }
-  }
+  // ─────────────────────────────────────────────────────────────────────────
+  // Gestión de sesión — permanecen en Angular
+  // Estas operaciones son estado local del navegador y las usan los guards,
+  // interceptors HTTP y componentes de UI.
+  // ─────────────────────────────────────────────────────────────────────────
 
   /**
-   * Actualiza la informacion de un perfil existente.
+   * Inyecta una sesion recibida del backend en el cliente local de Supabase.
+   * Llamado por AuthService.login() tras recibir la sesion del servidor,
+   * para que getSession(), getUser() e isAuthenticated() funcionen correctamente.
    */
-  public async updateProfile(id: string, name: string, phone: string): Promise<{ success: boolean; error?: string }> {
-    try {
-      const client = this.ensureClient();
-      const { error } = await client
-        .from('profiles')
-        .update({ name, phone })
-        .eq('id', id);
-
-      if (error) {
-        return { success: false, error: error.message };
-      }
-      return { success: true };
-    } catch (error) {
-      return { success: false, error: String(error) };
-    }
-  }
-
-  /**
-   * Recupera los datos de perfil asociados a un ID de usuario.
-   */
-  public async getProfile(id: string): Promise<{ success: boolean; data?: any; error?: string }> {
-    try {
-      const client = this.ensureClient();
-      const { data, error } = await client
-        .from('profiles')
-        .select('*')
-        .eq('id', id)
-        .single();
-
-      if (error) {
-        return { success: false, error: error.message };
-      }
-      return { success: true, data };
-    } catch (error) {
-      return { success: false, error: String(error) };
-    }
-  }
-
-  /**
-   * Realiza el inicio de sesion mediante correo y contrasena.
-   */
-  async loginWithAuth(email: string, password: string): Promise<{
-    success: boolean;
-    user?: any;
-    session?: any;
-    error?: string;
-  }> {
-    try {
-      const client = this.ensureClient();
-      const { data, error } = await client.auth.signInWithPassword({
-        email: email.trim(),
-        password: password.trim()
-      });
-
-      if (error) {
-        return { success: false, error: this.mapAuthError(error) };
-      }
-
-      if (data.user && data.session) {
-        return { success: true, user: data.user, session: data.session };
-      }
-
-      return { success: false, error: 'No se pudo establecer la sesion de usuario.' };
-    } catch (error) {
-      return { success: false, error: 'Error de conexion con el servidor de autenticacion.' };
-    }
-  }
-
-  /**
-   * Registra una nueva cuenta de usuario en el sistema de autenticacion.
-   */
-  async signUpWithAuth(email: string, password: string): Promise<{
-    success: boolean;
-    user?: any;
-    error?: string;
-  }> {
-    try {
-      const client = this.ensureClient();
-      const { data, error } = await client.auth.signUp({
-        email: email.trim(),
-        password: password.trim(),
-      });
-
-      if (error) {
-        return { success: false, error: this.mapAuthError(error) };
-      }
-
-      if (data.user) {
-        return { success: true, user: data.user };
-      }
-
-      return { success: false, error: 'Error inesperado durante el registro de la cuenta.' };
-    } catch (error) {
-      return { success: false, error: 'Fallo al conectar con el servicio de registro.' };
-    }
-  }
-
-  /**
-   * Finaliza la sesion actual del usuario.
-   */
-  async logout(): Promise<{ success: boolean; error?: string }> {
-    try {
-      const client = this.ensureClient();
-      const { error } = await client.auth.signOut();
-
-      if (error) {
-        return { success: false, error: error.message };
-      }
-      return { success: true };
-    } catch (error) {
-      return { success: false, error: String(error) };
+  async setSession(accessToken: string, refreshToken: string): Promise<void> {
+    const client = this.ensureClient();
+    const { error } = await client.auth.setSession({
+      access_token: accessToken,
+      refresh_token: refreshToken
+    });
+    if (error) {
+      throw new Error(`[SupabaseService] Error al establecer la sesion: ${error.message}`);
     }
   }
 
@@ -201,7 +89,7 @@ export class SupabaseService {
   }
 
   /**
-   * Obtiene la informacion del usuario autenticado.
+   * Obtiene la informacion del usuario autenticado desde la sesion local.
    */
   public async getUser(): Promise<{ user: any; error?: string }> {
     try {
@@ -215,9 +103,141 @@ export class SupabaseService {
   }
 
   /**
+   * Finaliza la sesion activa del usuario en el cliente local.
+   * AuthService.logout() llama a este metodo despues de notificar al backend.
+   */
+  async logout(): Promise<{ success: boolean; error?: string }> {
+    try {
+      const client = this.ensureClient();
+      const { error } = await client.auth.signOut();
+      if (error) return { success: false, error: error.message };
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: String(error) };
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Métodos delegados al backend (Node.js)
+  // Se conservan por compatibilidad con otras partes de la app que pudieran
+  // usarlos directamente, pero el AuthService ya no los invoca — toda esa
+  // lógica ahora pasa por los endpoints /api/auth del servidor.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * @deprecated Usar POST /api/auth/signup desde AuthService.
+   * El backend maneja el registro, el cifrado del telefono y la creacion del perfil.
+   */
+  async signUpWithAuth(email: string, password: string): Promise<{
+    success: boolean;
+    user?: any;
+    error?: string;
+  }> {
+    try {
+      const client = this.ensureClient();
+      const { data, error } = await client.auth.signUp({
+        email: email.trim(),
+        password: password.trim(),
+      });
+
+      if (error) return { success: false, error: this.mapAuthError(error) };
+      if (data.user) return { success: true, user: data.user };
+
+      return { success: false, error: 'Error inesperado durante el registro de la cuenta.' };
+    } catch (error) {
+      return { success: false, error: 'Fallo al conectar con el servicio de registro.' };
+    }
+  }
+
+  /**
+   * @deprecated Usar POST /api/auth/login desde AuthService.
+   * El backend maneja la autenticacion, el control de intentos y los bloqueos.
+   */
+  async loginWithAuth(email: string, password: string): Promise<{
+    success: boolean;
+    user?: any;
+    session?: any;
+    error?: string;
+  }> {
+    try {
+      const client = this.ensureClient();
+      const { data, error } = await client.auth.signInWithPassword({
+        email: email.trim(),
+        password: password.trim()
+      });
+
+      if (error) return { success: false, error: this.mapAuthError(error) };
+      if (data.user && data.session) return { success: true, user: data.user, session: data.session };
+
+      return { success: false, error: 'No se pudo establecer la sesion de usuario.' };
+    } catch (error) {
+      return { success: false, error: 'Error de conexion con el servidor de autenticacion.' };
+    }
+  }
+
+  /**
+   * @deprecated Usar GET /api/auth/profile/:id desde AuthService.
+   * El backend descifra el telefono antes de devolver el perfil.
+   */
+  public async getProfile(id: string): Promise<{ success: boolean; data?: any; error?: string }> {
+    try {
+      const client = this.ensureClient();
+      const { data, error } = await client
+        .from('profiles')
+        .select('*')
+        .eq('id', id)
+        .single();
+
+      if (error) return { success: false, error: error.message };
+      return { success: true, data };
+    } catch (error) {
+      return { success: false, error: String(error) };
+    }
+  }
+
+  /**
+   * @deprecated Usar PUT /api/auth/profile/:id desde AuthService.
+   * El backend cifra el telefono antes de guardarlo.
+   */
+  public async updateProfile(id: string, name: string, phone: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      const client = this.ensureClient();
+      const { error } = await client
+        .from('profiles')
+        .update({ name, phone })
+        .eq('id', id);
+
+      if (error) return { success: false, error: error.message };
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: String(error) };
+    }
+  }
+
+  /**
+   * @deprecated Usar POST /api/auth/signup desde AuthService.
+   * El backend crea el perfil junto con el registro del usuario.
+   */
+  public async createProfile(id: string, name: string, phone: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      const client = this.ensureClient();
+      const { error } = await client.from('profiles').insert({ id, name, phone });
+
+      if (error) return { success: false, error: error.message };
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: String(error) };
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Utilidades — permanecen en Angular
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
    * Traduce los errores tecnicos de autenticacion a mensajes amigables para el usuario.
    */
-  private mapAuthError(error: AuthError): string {
+  mapAuthError(error: AuthError): string {
     const message = error.message.toLowerCase();
 
     if (message.includes('invalid login credentials')) {
