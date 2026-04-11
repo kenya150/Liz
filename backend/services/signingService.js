@@ -47,7 +47,7 @@ function signUserData(id, email, role) {
   // Genera la firma usando la llave privada y la devuelve en base64
   const signature = sign.sign(privateKey, 'base64');
 
-  console.info(`[SigningService] Firma generada correctamente para: ${email}`);
+  console.info(`[SigningService] Firma generada correctamente para el usuario: ${id}`);
 
   return signature;
 }
@@ -82,7 +82,7 @@ function verifyUserData(id, email, role, signature) {
 
     if (!valid) {
       // La firma no coincide — los datos fueron alterados despues de ser firmados
-      console.warn(`[SigningService] Verificacion fallida para: ${email} — posible manipulacion de datos.`);
+      console.warn(`[SigningService] Verificacion fallida para el usuario: ${id} — posible manipulacion de datos.`);
     }
 
     return valid;

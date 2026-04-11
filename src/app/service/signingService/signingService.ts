@@ -41,7 +41,7 @@ export class SigningService {
     this.signedPayload = payload;
 
     // Confirmacion de que la firma digital fue recibida y almacenada en memoria
-    this.securityLogger.log(LogLevel.INFO, 'Firma digital almacenada en sesion', payload.email);
+    this.securityLogger.log(LogLevel.INFO, 'Firma digital almacenada en sesion', payload.id);
   }
 
   /**
@@ -53,9 +53,10 @@ export class SigningService {
 
   /**
    * Limpia la firma al cerrar sesion.
+   * El identificador se captura antes de limpiar el payload para poder incluirlo en el log.
    */
   clearSignature(): void {
-    const identifier = this.signedPayload?.email || 'usuario_desconocido';
+    const identifier = this.signedPayload?.id || 'usuario_desconocido';
 
     this.signature = null;
     this.signedPayload = null;
@@ -73,7 +74,8 @@ export class SigningService {
       return { valid: false, message: 'No hay firma activa para verificar.' };
     }
 
-    const identifier = this.signedPayload.email;
+    // Se captura el UUID antes de la peticion para usarlo en el log
+    const identifier = this.signedPayload.id;
 
     try {
       const result = await firstValueFrom(

@@ -63,7 +63,7 @@ export class AuthService {
       return { success: false, message: 'Todos los campos son obligatorios.' };
     }
     if (this.containsInjection(name, email, phone)) {
-      // Intento de inyeccion detectado en el formulario de registro
+      // Intento de inyeccion detectado antes de tener UUID — se usa email como identificador
       this.securityLogger.log(LogLevel.CRITICAL, 'Intento de inyeccion detectado en signup', email);
       return { success: false, message: 'Los datos ingresados contienen caracteres no permitidos.' };
     }
@@ -74,7 +74,7 @@ export class AuthService {
       );
 
       if (result.success) {
-        // Nuevo usuario registrado correctamente
+        // Usuario no autenticado aun al registrarse — se usa email como identificador
         this.securityLogger.log(LogLevel.INFO, 'Registro de usuario exitoso', email);
       } else {
         // El backend rechazo el registro por algun motivo
@@ -97,7 +97,7 @@ export class AuthService {
       return { success: false, message: 'Correo y contrasena son obligatorios.' };
     }
     if (this.containsInjection(email, password)) {
-      // Intento de inyeccion detectado en el formulario de login
+      // Intento de inyeccion detectado antes de autenticar — no hay UUID disponible
       this.securityLogger.log(LogLevel.CRITICAL, 'Intento de inyeccion detectado en login', email);
       return { success: false, message: 'Los datos ingresados contienen caracteres no permitidos.' };
     }
@@ -117,20 +117,20 @@ export class AuthService {
           this.signing.storeSignature(result.signature, result.signedPayload);
         }
 
-        // Usuario autenticado correctamente
-        this.securityLogger.log(LogLevel.INFO, 'Inicio de sesion exitoso', email);
+        // Login exitoso — se usa el UUID devuelto por el backend
+        this.securityLogger.log(LogLevel.INFO, 'Inicio de sesion exitoso', result.user.id);
 
       } else {
 
         if (result.lockedUntil) {
-          // Cuenta bloqueada tras multiples intentos fallidos consecutivos
+          // Cuenta bloqueada — no hay UUID disponible al fallar la autenticacion
           this.securityLogger.log(
             LogLevel.CRITICAL,
             `Cuenta bloqueada hasta ${new Date(result.lockedUntil).toISOString()}`,
             email
           );
         } else {
-          // Fallo en credenciales, se registra el numero de intento
+          // Credenciales invalidas — no hay UUID disponible al fallar la autenticacion
           this.securityLogger.log(
             LogLevel.WARN,
             `Credenciales invalidas. Intento numero: ${result.attempts ?? 1}`,
@@ -154,9 +154,9 @@ export class AuthService {
       const { session } = await this.supabase.getSession();
       const token = session?.access_token;
 
-      // Se obtiene el email del usuario antes de cerrar la sesion para el log
+      // Se obtiene el UUID del usuario antes de cerrar la sesion para el log
       const user = await this.getCurrentUser();
-      const identifier = user?.email || 'usuario_desconocido';
+      const identifier = user?.id || 'usuario_desconocido';
 
       if (token) {
         await firstValueFrom(
@@ -189,7 +189,7 @@ export class AuthService {
       );
 
       if (result.success) {
-        // Consulta de perfil realizada correctamente
+        // Consulta de perfil realizada correctamente — se usa el UUID recibido como parametro
         this.securityLogger.log(LogLevel.INFO, 'Perfil de usuario consultado', id);
       }
 
@@ -213,7 +213,7 @@ export class AuthService {
       );
 
       if (result.success) {
-        // Perfil actualizado correctamente con datos cifrados en el servidor
+        // Perfil actualizado correctamente — se usa el UUID recibido como parametro
         this.securityLogger.log(LogLevel.INFO, 'Perfil actualizado correctamente', id);
       } else {
         // El backend rechazo la actualizacion del perfil
