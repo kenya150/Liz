@@ -11,7 +11,7 @@ const supabase = require('../services/supabaseClient');
  * y persiste el evento en la tabla security_logs de Supabase.
  *
  * La tabla debe existir en Supabase:
- * CREATE TABLE security_logs (
+ * CREATE TABLE public.security_logs (
  *   id         uuid DEFAULT gen_random_uuid() PRIMARY KEY,
  *   level      text NOT NULL,
  *   message    text NOT NULL,
@@ -30,9 +30,9 @@ router.post('/security', async (req, res) => {
       return res.status(400).json({ error: 'level y message son requeridos.' });
     }
 
-    // Solo aceptar niveles que justifican persistencia en servidor
-    if (!['WARN', 'CRITICAL'].includes(level)) {
-      return res.status(400).json({ error: 'Solo se aceptan niveles WARN y CRITICAL.' });
+    // Acepta los niveles pedidos en la practica
+    if (!['INFO', 'WARN', 'CRITICAL'].includes(level)) {
+      return res.status(400).json({ error: 'Nivel inválido. Debe ser INFO, WARN o CRITICAL.' });
     }
 
     // La IP real viene del request, no del cliente

@@ -45,10 +45,7 @@ export class SecurityLoggerService {
     this.saveToLocalStorage(logEntry);
     this.printToConsole(level, logEntry);
 
-    // WARN y CRITICAL se persisten en el servidor donde no pueden ser manipulados
-    if (level === LogLevel.WARN || level === LogLevel.CRITICAL) {
-      this.sendToBackend(level, message, userIdentifier, timestamp);
-    }
+    this.sendToBackend(level, message, userIdentifier, timestamp);
   }
 
   private sendToBackend(
