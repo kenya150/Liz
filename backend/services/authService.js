@@ -1,5 +1,6 @@
 const { createClient } = require('@supabase/supabase-js');
 const { encrypt, decrypt } = require('./encryptionService');
+const { signUserData } = require('./signingService');
 
 /**
  * Cliente de Supabase con service role key para operaciones de admin.
@@ -227,11 +228,23 @@ async function login(email, password) {
   attemptStore.delete(sanitizedEmail);
   await logAudit({ email: sanitizedEmail, action: 'login', success: true });
 
+  const signature = signUserData(
+    data.user.id,
+    data.user.email,
+    data.user.role  // Supabase devuelve 'authenticated'
+  );
+
   return {
     success: true,
     message: 'Acceso concedido.',
     session: data.session,
     user: data.user,
+    signature,                           // firma digital
+    signedPayload: {                     // datos que fueron firmados
+      id:    data.user.id,
+      email: data.user.email,
+      role:  data.user.role
+    }
   };
 }
 

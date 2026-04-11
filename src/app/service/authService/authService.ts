@@ -3,6 +3,7 @@ import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import { SupabaseService } from '../supabaseService/supabaseService';
 import { environment } from '../../../environments/environment';
+import { SigningService } from '../signingService/signingService';
 
 export interface LoginResult {
   success: boolean;
@@ -28,13 +29,14 @@ const BLOCKED_PATTERNS: RegExp[] = [
 export class AuthService {
   /**
    * URL base del backend. Configura environment.apiUrl en cada entorno.
-   * Ejemplo: environment.apiUrl = 'http://localhost:3000'
+   * Ejemplo: environment.apiUrl = 'https://localhost:3000'
    */
   private readonly apiUrl = `${environment.apiUrl}/auth`;
 
   constructor(
     private http: HttpClient,
-    private supabase: SupabaseService
+    private supabase: SupabaseService,
+    private signing: SigningService
   ) {}
 
   /**
@@ -96,6 +98,10 @@ export class AuthService {
         );
       }
 
+      if (result.signature && result.signedPayload) {
+        this.signing.storeSignature(result.signature, result.signedPayload);
+      }
+
       return result;
     } catch (err: any) {
       return err?.error ?? { success: false, message: 'Error al conectar con el servidor.' };
@@ -120,8 +126,10 @@ export class AuthService {
       }
 
       await this.supabase.logout();
+      this.signing.clearSignature();
       return true;
     } catch {
+      this.signing.clearSignature();
       return false;
     }
   }

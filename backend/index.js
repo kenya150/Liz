@@ -7,6 +7,7 @@ const cors = require('cors');
 const encryptionRoutes = require('./routes/encryption');
 const authRoutes = require('./routes/auth');
 const logsRoutes = require('./routes/logs');
+const signingRoutes = require('./routes/signing');
 
 const app = express();
 
@@ -16,6 +17,7 @@ app.use(express.json());
 app.use('/api/encryption', encryptionRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/logs', logsRoutes);
+app.use('/api/signing', signingRoutes);
 
 app.get('/', (req, res) => {
   res.send('API funcionando');
