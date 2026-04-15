@@ -50,7 +50,8 @@ router.post('/logout', async (req, res) => {
     if (!token) {
       return res.status(400).json({ success: false, message: 'Token de autorización requerido.' });
     }
-    const result = await logout(token);
+    const { jti } = req.body; // JTI opcional para revocar firma
+    const result = await logout(token, jti);
     res.status(result.success ? 200 : 500).json(result);
   } catch (err) {
     console.error('[Auth Route] /logout:', err.message);

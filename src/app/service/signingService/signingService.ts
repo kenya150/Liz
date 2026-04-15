@@ -8,11 +8,15 @@ export interface SignedPayload {
   id: string;
   email: string;
   role: string;
+  iat: number;
+  exp: number;
+  jti: string;
 }
 
 export interface VerificationResult {
   valid: boolean;
   message: string;
+  reason: string;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -71,7 +75,7 @@ export class SigningService {
    */
   async verify(): Promise<VerificationResult> {
     if (!this.signature || !this.signedPayload) {
-      return { valid: false, message: 'No hay firma activa para verificar.' };
+      return { valid: false, message: 'No hay firma activa para verificar.', reason: 'no_signature' };
     }
 
     // Se captura el UUID antes de la peticion para usarlo en el log
@@ -95,7 +99,7 @@ export class SigningService {
 
       return result;
     } catch (err: any) {
-      return err?.error ?? { valid: false, message: 'Error al conectar con el servidor de verificacion.' };
+      return err?.error ?? { valid: false, message: 'Error al conectar con el servidor de verificacion.', reason: 'connection_error' };
     }
   }
 
@@ -111,6 +115,21 @@ export class SigningService {
       return res.publicKey;
     } catch {
       return 'No se pudo obtener la llave publica.';
+    }
+  }
+
+  /**
+   * Consulta el estado de las llaves privada y pública en el servidor.
+   * Útil para detectar si alguna llave fue corrompida.
+   */
+  async getKeyPairStatus(): Promise<{ valid: boolean; message: string }> {
+    try {
+      const res = await firstValueFrom(
+        this.http.get<{ valid: boolean; message: string }>(`${this.apiUrl}/key-status`)
+      );
+      return res;
+    } catch {
+      return { valid: false, message: 'No se pudo consultar el estado de las llaves.' };
     }
   }
 }

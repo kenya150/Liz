@@ -12,14 +12,19 @@ if (!privateKey || !publicKey) {
   throw new Error('PRIVATE_KEY y PUBLIC_KEY son requeridas en .env');
 }
 
+const DEFAULT_SIGNATURE_LIFETIME_SECONDS = 60 * 60; // 1 hora
+
+// Lista de firmas revocadas (en memoria - en producción usar Redis/DB)
+const revokedSignatures = new Set();
+
 /**
  * Datos que se firman — los que no deben poder alterarse.
- * id, email y role son los campos criticos de identidad y autorizacion.
+ * id, email, role, iat y exp son los campos criticos de integridad.
  * Se ordenan alfabeticamente para garantizar que la serializacion
  * sea siempre la misma sin importar el orden en que lleguen.
  */
-function buildPayload(id, email, role) {
-  return JSON.stringify({ email, id, role });
+function buildPayload({ id, email, role, iat, exp, jti }) {
+  return JSON.stringify({ email, id, jti, role, iat, exp });
 }
 
 /**
@@ -29,67 +34,84 @@ function buildPayload(id, email, role) {
  * @param {string} id    - UUID del usuario (auth.users.id)
  * @param {string} email - Correo del usuario
  * @param {string} role  - Rol de Supabase (normalmente 'authenticated')
- * @returns {string}     - Firma en formato base64
+ * @param {number} expiresInSeconds - Tiempo de vida de la firma en segundos
+ * @returns {object}     - Firma en formato base64 y el payload
  */
-function signUserData(id, email, role) {
-  // Serializa los datos del usuario en un string JSON ordenado
-  const payload = buildPayload(id, email, role);
+function signUserData(id, email, role, expiresInSeconds = DEFAULT_SIGNATURE_LIFETIME_SECONDS) {
+  const now = Math.floor(Date.now() / 1000);
+  const jti = crypto.randomUUID(); // ID único de la firma
+  const payload = {
+    id,
+    email,
+    role,
+    iat: now,
+    exp: now + expiresInSeconds,
+    jti
+  };
+  const serializedPayload = buildPayload(payload);
 
-  // Crea un objeto de firma usando SHA256 como algoritmo de hash
   const sign = crypto.createSign('SHA256');
-
-  // Alimenta el payload al objeto de firma
-  sign.update(payload);
-
-  // Indica que no hay mas datos que procesar
+  sign.update(serializedPayload);
   sign.end();
 
-  // Genera la firma usando la llave privada y la devuelve en base64
-  const signature = sign.sign(privateKey, 'base64');
-
-  console.info(`[SigningService] Firma generada correctamente para el usuario: ${id}`);
-
-  return signature;
+  return {
+    signature: sign.sign(privateKey, 'base64'),
+    payload
+  };
 }
 
 /**
- * Verifica que los datos del usuario no fueron alterados.
+ * Revoca una firma específica (al cerrar sesión).
+ */
+function revokeSignature(jti) {
+  revokedSignatures.add(jti);
+  console.info(`[SigningService] Firma revocada: ${jti}`);
+}
+
+/**
+ * Verifica que los datos del usuario no fueron alterados y que la firma sigue vigente.
  * Usa la llave publica — no necesita la privada.
  *
- * @param {string} id        - UUID recibido del cliente
- * @param {string} email     - Email recibido del cliente
- * @param {string} role      - Rol recibido del cliente
- * @param {string} signature - Firma base64 recibida del cliente
- * @returns {boolean}        - true si los datos son integros, false si fueron alterados
+ * @param {object} params
+ * @param {string} params.id
+ * @param {string} params.email
+ * @param {string} params.role
+ * @param {number} params.iat
+ * @param {number} params.exp
+ * @param {string} params.jti
+ * @param {string} params.signature
+ * @returns {{ valid: boolean, reason: string }}
  */
-function verifyUserData(id, email, role, signature) {
+function verifyUserData({ id, email, role, iat, exp, jti, signature }) {
   try {
-    // Reconstruye el mismo payload con los datos recibidos del cliente
-    const payload = buildPayload(id, email, role);
-
-    // Crea un objeto de verificacion con el mismo algoritmo usado al firmar
-    const verify = crypto.createVerify('SHA256');
-
-    // Alimenta el payload recibido al verificador
-    verify.update(payload);
-
-    // Indica que no hay mas datos que procesar
-    verify.end();
-
-    // Compara el payload reconstruido contra la firma original usando la llave publica.
-    // Si un solo caracter fue alterado (id, email o role), devuelve false.
-    const valid = verify.verify(publicKey, signature, 'base64');
-
-    if (!valid) {
-      // La firma no coincide — los datos fueron alterados despues de ser firmados
-      console.warn(`[SigningService] Verificacion fallida para el usuario: ${id} — posible manipulacion de datos.`);
+    if (!id || !email || !role || !iat || !exp || !jti || !signature) {
+      return { valid: false, reason: 'missing_fields' };
     }
 
-    return valid;
+    // Verificar si la firma fue revocada
+    if (revokedSignatures.has(jti)) {
+      return { valid: false, reason: 'signature_revoked' };
+    }
+
+    const payload = buildPayload({ id, email, role, iat, exp, jti });
+    const verify = crypto.createVerify('SHA256');
+    verify.update(payload);
+    verify.end();
+
+    const signatureIsValid = verify.verify(publicKey, signature, 'base64');
+    if (!signatureIsValid) {
+      return { valid: false, reason: 'invalid_signature' };
+    }
+
+    const now = Math.floor(Date.now() / 1000);
+    if (now < iat || now > exp) {
+      return { valid: false, reason: 'expired_or_invalid_timestamp' };
+    }
+
+    return { valid: true, reason: 'ok' };
   } catch (err) {
-    // Si la firma tiene formato invalido o la llave falla, se trata como verificacion fallida
     console.error(`[SigningService] Error inesperado durante la verificacion:`, err?.message);
-    return false;
+    return { valid: false, reason: 'verification_error' };
   }
 }
 
@@ -101,4 +123,49 @@ function getPublicKey() {
   return publicKey;
 }
 
-module.exports = { signUserData, verifyUserData, getPublicKey };
+/**
+ * Valida que la llave privada y publica sean compatibles.
+ */
+function validateKeyPair() {
+  try {
+    const testData = 'healthtech-key-check';
+    const sign = crypto.createSign('SHA256');
+    sign.update(testData);
+    sign.end();
+
+    const signature = sign.sign(privateKey, 'base64');
+
+    const verify = crypto.createVerify('SHA256');
+    verify.update(testData);
+    verify.end();
+
+    return { valid: verify.verify(publicKey, signature, 'base64'), error: null };
+  } catch (err) {
+    console.error('[SigningService] Error validando par de llaves:', err?.message);
+    return { valid: false, error: err?.message };
+  }
+}
+
+/**
+ * Devuelve el estado de las llaves (válidas o corruptas).
+ * No expone las llaves, solo si son compatibles.
+ */
+function getKeyPairStatus() {
+  const result = validateKeyPair();
+  if (result.valid) {
+    return {
+      valid: true,
+      message: 'Las llaves privada y pública son compatibles.'
+    };
+  } else {
+    const message = result.error
+      ? `ALERTA: Llave privada corrupta o inválida. Error: ${result.error}`
+      : 'ALERTA: Las llaves privada y pública no coinciden o están corruptas.';
+    return {
+      valid: false,
+      message
+    };
+  }
+}
+
+module.exports = { signUserData, verifyUserData, getPublicKey, validateKeyPair, getKeyPairStatus, revokeSignature };

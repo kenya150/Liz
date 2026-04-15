@@ -1,6 +1,6 @@
 const { createClient } = require('@supabase/supabase-js');
 const { encrypt, decrypt } = require('./encryptionService');
-const { signUserData } = require('./signingService');
+const { signUserData, revokeSignature } = require('./signingService');
 
 /**
  * Cliente de Supabase con service role key para operaciones de admin.
@@ -228,7 +228,7 @@ async function login(email, password) {
   attemptStore.delete(sanitizedEmail);
   await logAudit({ email: sanitizedEmail, action: 'login', success: true });
 
-  const signature = signUserData(
+  const signed = signUserData(
     data.user.id,
     data.user.email,
     data.user.role  // Supabase devuelve 'authenticated'
@@ -239,23 +239,26 @@ async function login(email, password) {
     message: 'Acceso concedido.',
     session: data.session,
     user: data.user,
-    signature,                           // firma digital
-    signedPayload: {                     // datos que fueron firmados
-      id:    data.user.id,
-      email: data.user.email,
-      role:  data.user.role
-    }
+    signature: signed.signature,          // firma digital
+    signedPayload: signed.payload        // datos firmados incluyendo iat/exp
   };
 }
 
 /**
- * Cierra la sesión de un usuario invalidando su token en Supabase.
- * Recibe el access token del header Authorization para identificar al usuario.
+ * Cierra la sesión de un usuario invalidando su token en Supabase
+ * y revocando su firma digital activa.
+ * Recibe el access token del header Authorization para identificar al usuario
+ * y el JTI de la firma actual para revocarla.
  */
-async function logout(accessToken) {
+async function logout(accessToken, jti = null) {
   try {
     // Obtiene el usuario a partir del token para registrar en auditoría
     const { data: { user } } = await supabase.auth.getUser(accessToken);
+
+    // Revoca la firma digital si se proporcionó JTI
+    if (jti) {
+      revokeSignature(jti);
+    }
 
     // Revoca todos los tokens activos del usuario usando el cliente admin
     if (user?.id) {

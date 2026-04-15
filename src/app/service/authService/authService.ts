@@ -158,9 +158,13 @@ export class AuthService {
       const user = await this.getCurrentUser();
       const identifier = user?.id || 'usuario_desconocido';
 
+      // Obtener el JTI de la firma actual para revocarla
+      const { payload } = this.signing.getSignature();
+      const jti = payload?.jti;
+
       if (token) {
         await firstValueFrom(
-          this.http.post(`${this.apiUrl}/logout`, {}, {
+          this.http.post(`${this.apiUrl}/logout`, { jti }, {
             headers: { Authorization: `Bearer ${token}` }
           })
         );
